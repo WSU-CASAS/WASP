@@ -99,6 +99,33 @@ class Event:
 
 
 ###############################################################################
+#### Space class
+###############################################################################
+class Space:
+    def __init__(self, name):
+        self.name = name
+        self.area = list()
+        return
+    
+    def add_area(self, x, y, width, height, maxW, maxH):
+        for ax in range(int(float(width))):
+            for ay in range(int(float(height))):
+                nx = int(float(x)) + ax
+                ny = int(float(y)) + ay
+                if nx < maxW and ny < maxH:
+                    spot = "%sx%s" % (str(nx), str(ny))
+                    if spot not in self.area:
+                        self.area.append(spot)
+        return
+    
+    def in_area(self, x, y):
+        spot = "%sx%s" % (str(x), str(y))
+        if spot in self.area:
+            return True
+        return False
+
+
+###############################################################################
 #### Sensor class
 ###############################################################################
 class Sensor:
@@ -170,6 +197,7 @@ class Emulator:
         self.max_width = 0
         self.max_height = 0
         self.space = None
+        self.areas = None
         self.sensors = None
         self.sensor_view = None
         self.events = list()
@@ -201,6 +229,7 @@ class Emulator:
                     self.space[px][py] = 'w'
                     py += 1
                 px += 1
+        
         lintels = dom.getElementsByTagName("lintel")
         for l in lintels:
             x = int(float(l.getAttribute("x")))
@@ -214,6 +243,7 @@ class Emulator:
                     self.space[px][py] = 'l'
                     py += 1
                 px += 1
+        
         offLimits = dom.getElementsByTagName("off_limits")
         children = offLimits[0].childNodes
         for c in children:
@@ -230,6 +260,21 @@ class Emulator:
                             self.space[px][py] = 'x'
                         py += 1
                     px += 1
+        
+        self.areas = list()
+        spaces = dom.getElementsByTagName("space")
+        for space in spaces:
+            sName = str(space.getAttribute("name")).strip()
+            self.areas.append(Space(sName))
+            children = space.childNodes
+            for c in children:
+                if c.nodeName == "rectangle":
+                    x = str(c.getAttribute("x")).strip()
+                    y = str(c.getAttribute("y")).strip()
+                    width = str(c.getAttribute("width")).strip()
+                    height = str(c.getAttribute("height")).strip()
+                    self.areas[-1].add_area(x, y, width, height,
+                                            self.max_width, self.max_height)
         #self.print_obj(self.space)
         return
     
@@ -306,7 +351,7 @@ class Emulator:
         self.print_view()
         return
     
-    def spread_sensor(self, id, sX, sY, radius=6):
+    def spread_sensor(self, id, sX, sY, radius=7):
         for angle in range(360):
             for r in range(radius):
                 dx = float(r+1) * float(math.cos(math.radians(angle)))
@@ -366,12 +411,22 @@ class Emulator:
         outFile.close()
         return
     
+    def output_translation(self):
+        for i in range(len(self.sensors)):
+            mystr = "%s\t" % str(self.sensors[i].id)
+            for j in range(len(self.areas)):
+                if self.areas[j].in_area(self.sensors[i].x, self.sensors[i].y):
+                    mystr += "%s " % str(self.areas[j].name)
+            print mystr
+        return
+    
     def run(self):
         self.load_site()
         self.load_movement()
         self.load_chromosome()
         self.emulate()
         self.output_results()
+        self.output_translation()
         return
 
 

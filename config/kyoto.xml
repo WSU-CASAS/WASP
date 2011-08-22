@@ -6,10 +6,12 @@
                     <rectangle x="1" y="1" width="41" height="31" />
                 </space>
                 <space name="hallway">
-                    <rectangle x="1" y="45" width="7" height="22" />
+                    <rectangle x="1" y="33" width="7" height="34" />
                     <rectangle x="9" y="33" width="7" height="34" />
-                    <rectangle x="8" y="57" widht="1" height="10" />
+                    <rectangle x="8" y="57" width="1" height="10" />
                     <rectangle x="16" y="49" width="8" height="6" />
+                    <rectangle x="17" y="56" width="10" height="11" />
+                    <rectangle x="17" y="33" width="6" height="15" />
                 </space>
                 <space name="kitchen">
                     <rectangle x="24" y="33" width="18" height="22" />
