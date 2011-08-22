@@ -1,9 +1,23 @@
 <site name="kyoto" max_width="43" max_height="68">
     <floors>
         <floor level="1">
-            <space>
-                <rectangle x="1" y="1" width="41" height="31" />
-            </space>
+            <spaces>
+                <space name="livingroom">
+                    <rectangle x="1" y="1" width="41" height="31" />
+                </space>
+                <space name="hallway">
+                    <rectangle x="1" y="45" width="7" height="22" />
+                    <rectangle x="9" y="33" width="7" height="34" />
+                    <rectangle x="8" y="57" widht="1" height="10" />
+                    <rectangle x="16" y="49" width="8" height="6" />
+                </space>
+                <space name="kitchen">
+                    <rectangle x="24" y="33" width="18" height="22" />
+                    <rectangle x="28" y="55" width="14" height="4" />
+                    <rectangle x="28" y="59" width="8" height="8" />
+                    <rectangle x="37" y="60" width="5" height="7" />
+                </space>
+            </spaces>
             <walls>
                 <wall x="0" y="0" width="29" height="1" />
                 <lintel x="29" y="0" width="8" height="1" />
