@@ -1,6 +1,7 @@
 #!/usr/bin/python
 
 import ConfigParser
+import copy
 import datetime
 import math
 import optparse
@@ -51,7 +52,7 @@ def compare_events(one, two):
 ###############################################################################
 class PersonEvent:
     def __init__(self, line):
-        stuff = re.split('\s+', line)
+        stuff = re.split('\s+', str(line).strip())
         date = str(stuff[0]).strip()
         time = str(stuff[1]).strip()
         self.dt = get_datetime("%s %s" % (date, time))
@@ -59,10 +60,14 @@ class PersonEvent:
         self.x = str(stuff[3]).strip()
         self.y = str(stuff[4]).strip()
         self.speed = float(str(stuff[5]).strip())
+        self.annotation = ""
+        if len(stuff) > 6:
+            self.annotation = str(stuff[6]).strip()
         return
     
     def __str__(self):
-        mystr = "%s\t%s\t%s\t%s\t%s" % (str(self.dt), self.res, self.x, self.y, self.speed)
+        mystr = "%s\t%s\t%s\t%s\t%s\t%s" % (str(self.dt), self.res, self.x,
+                                            self.y, self.speed, self.annotation)
         return mystr
 
 
@@ -70,14 +75,26 @@ class PersonEvent:
 #### Event class
 ###############################################################################
 class Event:
-    def __init__(self, dt, serial, message):
+    def __init__(self, dt, serial, message, pevent):
         self.dt = dt
         self.serial = serial
         self.message = message
+        self.px = copy.copy(pevent.x)
+        self.py = copy.copy(pevent.y)
+        self.speed = copy.copy(pevent.speed)
+        self.annotation = copy.copy(pevent.annotation)
         return
     
     def __str__(self):
-        mystr = "%s\t%s\t%s" % (str(self.dt), self.serial, self.message)
+        mystr = "<event "
+        mystr += "timestamp=\"%s\" " % str(self.dt)
+        mystr += "serial=\"%s\" " % str(self.serial)
+        mystr += "message=\"%s\" " % str(self.message)
+        mystr += "x=\"%s\" " % str(self.px)
+        mystr += "y=\"%s\" " % str(self.py)
+        mystr += "speed=\"%s\" " % str(self.speed)
+        mystr += "annotation=\"%s\" " % str(self.annotation)
+        mystr += "/>"
         return mystr
 
 
@@ -129,20 +146,15 @@ class MotionSensor(Sensor):
         if self.last_motion == None:
             self.last_motion = pevent.dt
         if self.in_range(pevent.x, pevent.y):
-            #print "\t",self.id, self.last_motion, self.state
             if self.state == "OFF":
                 self.state = "ON"
-                #print "***",pevent.dt, self.id, self.state
-                self.add_event(pevent.dt, self.id, self.state)
+                self.add_event(pevent.dt, self.id, self.state, pevent)
             self.last_motion = pevent.dt
         else:
-            #print "\t",self.id, self.last_motion, self.state
             if self.state == "ON":
-                #print "***",(self.last_motion - pevent.dt)
                 if (pevent.dt - self.last_motion) >= datetime.timedelta(0,2.5):
                     self.state = "OFF"
-                    #print "***",pevent.dt, self.id, self.state
-                    self.add_event(pevent.dt, self.id, self.state)
+                    self.add_event(pevent.dt, self.id, self.state, pevent)
         return
 
 
@@ -244,6 +256,25 @@ class Emulator:
         
         print "Sorting movement events."
         self.movement.sort(cmp=compare_events)
+        
+        print "Filling empty buffer x/y values."
+        mSpeed = int(self.movement[0].speed)
+        mx = str(self.movement[0].x)
+        my = str(self.movement[0].y)
+        mAnnotation = str(self.movement[0].annotation)
+        for i in range(len(self.movement)):
+            if self.movement[i].x == "-1" and self.movement[i].y == "-1":
+                self.movement[i].x = mx
+                self.movement[i].y = my
+                self.movement[i].speed = mSpeed
+                self.movement[i].annotation = mAnnotation
+            else:
+                mx = copy.copy(self.movement[i].x)
+                my = copy.copy(self.movement[i].y)
+                mSpeed = copy.copy(self.movement[i].speed)
+                mAnnotation = copy.copy(self.movement[i].annotation)
+                if re.search('-end', mAnnotation):
+                    mAnnotation = ""
         return
     
     def load_chromosome(self):
@@ -273,12 +304,9 @@ class Emulator:
         
         self.print_obj(self.space)
         self.print_view()
-        #for x in range(len(self.sensors)):
-        #    print self.sensors[x].id
-        #    print self.sensors[x].view
         return
     
-    def spread_sensor(self, id, sX, sY, radius=7):
+    def spread_sensor(self, id, sX, sY, radius=6):
         for angle in range(360):
             for r in range(radius):
                 dx = float(r+1) * float(math.cos(math.radians(angle)))
@@ -300,8 +328,8 @@ class Emulator:
                     break
         return
     
-    def add_sensor_event(self, dt, serial, message):
-        self.events.append(Event(dt, serial, message))
+    def add_sensor_event(self, dt, serial, message, pevent):
+        self.events.append(Event(dt, serial, message, pevent))
         return
     
     def print_obj(self, obj):
@@ -325,14 +353,17 @@ class Emulator:
     def emulate(self):
         print "Emulating environment."
         for m in range(len(self.movement)):
-            #print self.movement[m]
             for s in range(len(self.sensors)):
                 self.sensors[s].apply_person_event(self.movement[m])
         return
     
     def output_results(self):
+        outFile = open(self.file_output, 'w')
+        outFile.write("<data>\n")
         for r in self.events:
-            print r
+            outFile.write("%s\n" % str(r))
+        outFile.write("</data>")
+        outFile.close()
         return
     
     def run(self):
