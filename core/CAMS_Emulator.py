@@ -323,9 +323,9 @@ class Emulator:
         return
     
     def load_chromosome(self):
-        fileIn = open(self.file_chromosome)
-        cData = fileIn.readlines()
-        fileIn.close()
+        dom = xml.dom.minidom.parse(self.file_chromosome)
+        chromo = dom.getElementsByTagName("chromosome")
+        cData = str(chromo[0].getAttribute("data"))
         senId = 0
         
         self.sensors = list()
@@ -337,7 +337,7 @@ class Emulator:
         
         for x in range(self.max_width):
             for y in range(self.max_height):
-                if cData[y][x] == '1':
+                if cData[x + (y*self.max_width)] == '1':
                     self.sensors.append(MotionSensor(senId, x, y))
                     self.space[x][y] = str(senId)
                     self.sensor_view[x][y].append(str(senId))
