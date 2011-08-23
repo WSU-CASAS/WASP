@@ -17,11 +17,47 @@ class Chromosome:
     def __init__(self, filename, width, height):
         self.width = int(float(width))
         self.height = int(float(height))
-        dom = xml.dom.minidom.parse(filename)
-        chromo = dom.getElementsByTagName("chromosome")
-        self.data = str(chromo[0].getAttribute("data")).strip()
-        self.fitness = float(chromo[0].getAttribute("fitness"))
+        if filename != "":
+            dom = xml.dom.minidom.parse(filename)
+            chromo = dom.getElementsByTagName("chromosome")
+            self.data = list(str(chromo[0].getAttribute("data")).strip())
+            self.fitness = float(chromo[0].getAttribute("fitness"))
+            self.generation = int(float(chromo[0].getAttribute("generation")))
+        else:
+            self.data = list()
+            for x in range(self.width * self.height):
+                self.data.append("0")
+            self.fitness = -1
+            self.generation = -1
+        self.check = None
         return
+    
+    def set_check(self, chFunc):
+        self.check = chFunc
+        return
+    
+    def set_num(self, num):
+        (x,y) = self.get_xy(int(float(num)))
+        if self.check(x,y):
+            self.data[int(float(num))] = "1"
+            return True
+        return False
+    
+    def set_xy(self, x, y):
+        if self.check(x,y):
+            self.data[self.get_num(x, y)] = "1"
+            return True
+        return False
+    
+    def invert_num(self, num):
+        (x,y) = self.get_xy(num)
+        if self.check(x,y):
+            if self.data[num] == "0":
+                self.data[num] = "1"
+            else:
+                self.data[num] = "0"
+            return True
+        return False
     
     def get_xy(self, number):
         y = int(number/self.width)
@@ -35,12 +71,27 @@ class Chromosome:
     def __add__(self, other):
         return
     
+    def __cmp__(self, other):
+        val = 0
+        if self.fitness < other.fitness:
+            val = -1
+        elif self.fitness > other.fitness:
+            val = 1
+        return val
+    
     def mutate(self):
-        found = False
-        num = 0
-        while not found:
+        num = random.randint(0, len(self.data)-1)
+        while not self.invert_num(num):
             num = random.randint(0, len(self.data)-1)
         return
+    
+    def __str__(self):
+        mystr = "<chromosome "
+        mystr += "data=\"%s\" " % str("".join(self.data))
+        mystr += "fitness=\"%s\" " % str(self.fitness)
+        mystr += "generation=\"%s\" " % str(self.generation)
+        mystr += "/>"
+        return mystr
 
 
 
@@ -54,6 +105,7 @@ class Pollinator:
         self.space = None
         self.max_width = 0
         self.max_height = 0
+        self.chromosomes = list()
         return
     
     def load_site(self):
@@ -119,7 +171,30 @@ class Pollinator:
             return True
         return False
     
+    def build_seed(self, count):
+        spots = range(self.max_width * self.max_height)
+        if count > len(spots):
+            count = len(spots)
+        chrom = Chromosome("", self.max_width, self.max_height)
+        chrom.set_check(self.valid_sensor_location)
+        for x in range(count):
+            num = random.randint(0, len(spots) - 1)
+            while not chrom.set_num(spots[num]):
+                del spots[num]
+                num = random.randint(0, len(spots) - 1)
+        return chrom
+    
+    def load_chromosomes(self):
+        return
+    
+    def breed_children(self):
+        return
+    
     def run(self):
+        self.load_site()
+        self.load_chromosomes()
+        self.chromosomes.sort()
+        self.breed_children()
         return
 
 
