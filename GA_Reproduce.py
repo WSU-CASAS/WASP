@@ -7,7 +7,6 @@ import re
 import sys
 import xml.dom.minidom
 
-random.seed()
 
 
 ###############################################################################
@@ -210,6 +209,10 @@ if __name__ == "__main__":
                       "--chromosome",
                       dest="chromosome",
                       help="Directory with the sensor chromosome definitions.")
+    parser.add_option("-r",
+                      "--random",
+                      dest="random",
+                      help="Random numbers seed.")
     (options, args) = parser.parse_args()
     if None in [options.site, options.chromosome]:
         if options.site == None:
@@ -218,6 +221,11 @@ if __name__ == "__main__":
             print "ERROR: Missing -c / --chromosome"
         parser.print_help()
         sys.exit()
+    
+    if options.random == None:
+        random.seed()
+    else:
+        random.seed(float(options.random))
     
     pobj = Pollinator(options)
     pobj.run()
