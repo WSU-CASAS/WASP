@@ -1,3 +1,3 @@
-CASP (CASAS Algorithmic Sensor Placement)
+WASP (WSU Algorithmic Sensor Placement)
 
 Author: Brian Thomas
