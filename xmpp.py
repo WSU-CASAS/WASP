@@ -307,11 +307,12 @@ class Connection:
         return
     
     def handle_roster(self, elem):
-        self.roster = dict()
+        self.roster = list()
         items = re.findall('<item .*?</item>|<item .*?/>', elem.toXml())
         for x in items:
             jid = re.findall("jid='(.*?)'", x)
             print jid[0]
+            self.roster.append(self.clean_jid(jid[0]))
             if re.search("ask='", x):
                 ask = re.findall("ask='(.*?)'", x)
                 print "    ask =",ask[0]
@@ -328,6 +329,8 @@ class Connection:
             if elem['type'] == "subscribe":
                 presence['type'] = "subscribed"
                 self.connection.send(presence)
+            elif elem['type'] == "subscribed":
+                self.roster.append(self.clean_jid(str(elem['from'])))
             elif elem['type'] == "unsubscribe":
                 presence['type'] = "unsubscribed"
                 self.connection.send(presence)
@@ -354,6 +357,8 @@ class Connection:
                 print "msg from:",str(elem['from'])
                 print str(elem.toXml())
             whofrom = self.clean_jid(elem['from'])
+            if whofrom not in self.roster:
+                self.subscribe_buddy(whofrom)
             body = getData("body", str(elem.toXml()))
             if body != "":
                 if re.search("<error>.*?</error>", body):
