@@ -2,9 +2,12 @@
 
 import copy
 import optparse
+import os
 import random
 import re
+import shutil
 import sys
+import uuid
 import xml.dom.minidom
 
 
@@ -13,9 +16,10 @@ import xml.dom.minidom
 #### Chromosome class
 ###############################################################################
 class Chromosome:
-    def __init__(self, filename, width, height):
+    def __init__(self, filename, width, height, config):
         self.width = int(float(width))
         self.height = int(float(height))
+        self.config = config
         if filename != "":
             dom = xml.dom.minidom.parse(filename)
             chromo = dom.getElementsByTagName("chromosome")
@@ -75,7 +79,25 @@ class Chromosome:
         return count
     
     def __add__(self, other):
-        return
+        child = Chromosome("", self.width, self.height, self.config)
+        child.set_check(self.check)
+        points = list()
+        for x in range(self.config["crossover"]):
+            r = random.randint(1, len(self.data-2))
+            while r in points:
+                r = random.randint(1, len(self.data-2))
+            points.append(r)
+        points.append(0)
+        points.append(len(self.data))
+        points.sort()
+        child.data = list()
+        for x in range(len(points) - 1):
+            if (x % 2) == 0:
+                child.data = list(child.data + self.data[points[x]:points[x+1]])
+            else:
+                child.data = list(child.data + other.data[points[x]:points[x+1]])
+        child.mutate()
+        return child
     
     def __cmp__(self, other):
         val = 0
@@ -86,9 +108,10 @@ class Chromosome:
         return val
     
     def mutate(self):
-        num = random.randint(0, len(self.data)-1)
-        while not self.invert_num(num):
-            num = random.randint(0, len(self.data)-1)
+        for x in range(len(self.data)):
+            num = random.random()
+            if num < self.config["mutation"]:
+                self.invert_num(x)
         return
     
     def __str__(self):
@@ -108,10 +131,18 @@ class Pollinator:
     def __init__(self, options):
         self.file_site = options.site
         self.dir_chromosome = options.chromosome
+        self.dir_nextgen = options.directory
+        self.nextgen = int(float(options.generation))
+        self.config = dict()
+        self.config["mutation"] = float(options.mutation_rate)
+        self.config["crossover"] = int(float(options.crossover))
+        self.config["survival"] = float(options.survival_rate)
+        self.config["reproduction"] = float(options.reproduction_rate)
         self.space = None
         self.max_width = 0
         self.max_height = 0
         self.chromosomes = list()
+        self.children = list()
         return
     
     def load_site(self):
@@ -191,9 +222,41 @@ class Pollinator:
         return chrom
     
     def load_chromosomes(self):
+        chromoFiles = os.listdir(self.dir_chromosome)
+        for cFile in chromoFiles:
+            self.chromosomes.append(Chromosome(os.path.join(self.dir_chromosome, cFile),
+                                               self.max_width, self.max_height,
+                                               self.config))
         return
     
     def breed_children(self):
+        self.chromosomes.sort(reverse=True)
+        survivers = int(len(self.chromosomes) * self.config["survival"])
+        for x in range(survivers):
+            self.children.append(self.chromosomes[x])
+        breeders = int(len(self.chromosomes) * self.config["reproduction"])
+        mates = int((len(self.chromosomes) - len(self.children)) / breeders)
+        spares = len(self.chromosomes) - (mates * breeders)
+        
+        for x in range(breeders):
+            turns = mates
+            if x < spares:
+                turns += 1
+            for y in turns:
+                self.children.append(self.chromosomes[x] + self.chromosomes[x+y])
+        
+        for x in range(len(self.children)):
+            if self.children[x].generation == -1:
+                self.children[x].generation = self.nextgen
+            
+            if self.children[x].filename == "":
+                fname = os.path.join(self.dir_chromosome,
+                                     "%s.xml" % str(uuid.uuid4().hex))
+                out = open(fname, 'w')
+                out.write(str(self.children[x]))
+                out.close()
+            else:
+                shutil.copy(self.children[x].filename, self.dir_nextgen)
         return
     
     def run(self):
@@ -216,16 +279,44 @@ if __name__ == "__main__":
                       "--chromosome",
                       dest="chromosome",
                       help="Directory with the sensor chromosome definitions.")
+    parser.add_option("-d",
+                      "--directory",
+                      dest="directory",
+                      help="Directory for next generation of chromosomes.")
+    parser.add_option("-g",
+                      "--generation",
+                      dest="generation",
+                      help="Value for next generation.")
     parser.add_option("-r",
                       "--random",
                       dest="random",
                       help="Random numbers seed.")
+    parser.add_option("--mutation_rate",
+                      dest="mutation_rate",
+                      help="Rate of mutation in new chromosomes.",
+                      default="0.005")
+    parser.add_option("--crossover",
+                      dest="crossover",
+                      help="Number of folds in reproduction.",
+                      default="1")
+    parser.add_option("--survival_rate",
+                      dest="survival_rate",
+                      help="Percent of parents that survive into next generation.",
+                      default="0.10")
+    parser.add_option("--reproduction_rate",
+                      dest="reproduction_rate",
+                      help="Percent of parents that get to reproduce.",
+                      default="0.25")
     (options, args) = parser.parse_args()
-    if None in [options.site, options.chromosome]:
+    if None in [options.site, options.chromosome, options.directory, options.generation]:
         if options.site == None:
             print "ERROR: Missing -s / --site"
         if options.chromosome == None:
             print "ERROR: Missing -c / --chromosome"
+        if options.directory == None:
+            print "ERROR: Missing -d / --directory"
+        if options.generation == None:
+            print "ERROR: Missing -g / --generation"
         parser.print_help()
         sys.exit()
     
