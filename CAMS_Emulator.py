@@ -404,9 +404,9 @@ class Emulator:
     
     def output_results(self):
         outFile = open(self.file_output, 'w')
-        outFile.write("<data>\n")
+        outFile.write("<data>")
         for r in self.events:
-            outFile.write("%s\n" % str(r))
+            outFile.write("%s" % str(r))
         outFile.write("</data>")
         outFile.close()
         return

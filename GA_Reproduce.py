@@ -67,6 +67,13 @@ class Chromosome:
         num = x + (y * self.width)
         return num
     
+    def get_sensor_count(self):
+        count = 0
+        for x in range(len(self.data)):
+            if self.data[x] == "1":
+                count += 1
+        return count
+    
     def __add__(self, other):
         return
     
