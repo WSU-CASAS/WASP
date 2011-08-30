@@ -101,10 +101,12 @@ class Chromosome:
         return child
     
     def __cmp__(self, other):
+        myf = self.fitness - (float(str("".join(self.data)).count("1"))/10.0)
+        otf = other.fitness - (float(str("".join(other.data)).count("1"))/10.0)
         val = 0
-        if self.fitness < other.fitness:
+        if myf < otf:
             val = -1
-        elif self.fitness > other.fitness:
+        elif myf > otf:
             val = 1
         return val
     
@@ -248,6 +250,9 @@ class Pollinator:
                 turns += 1
             for y in range(turns):
                 self.children.append(self.chromosomes[x] + self.chromosomes[x+y])
+        
+        while len(self.children) > len(self.chromosomes):
+            self.children.pop()
         
         for x in range(len(self.children)):
             if self.children[x].generation == -1:

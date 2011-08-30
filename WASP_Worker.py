@@ -68,8 +68,8 @@ class Worker:
             cmd += "--chromosome=%s " % os.path.join(self.directory, command)
             cmd += "--output=%s" % os.path.join(self.directory, dfiles[df])
             subprocess.call(str(cmd).split())
-            print cmd
-            print os.listdir(self.directory)
+            #print cmd
+            #print os.listdir(self.directory)
             emulated.append(str(dfiles[df]))
         
         cmd = "%s GA_Fitness.py " % str(self.pypath)
@@ -79,8 +79,8 @@ class Worker:
         cmd += "--method=CookAr "
         cmd += "--work=%s" % str(self.directory)
         subprocess.call(str(cmd).split())
-        print cmd
-        print os.listdir(self.directory)
+        #print cmd
+        #print os.listdir(self.directory)
         
         msg = "<job_completed>"
         msg += "<data filename=\"%s\" >" % str(command)

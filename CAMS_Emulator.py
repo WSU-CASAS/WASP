@@ -339,6 +339,7 @@ class Emulator:
             for y in range(self.max_height):
                 self.sensor_view[x].append(list())
         
+        #self.print_obj(self.space)
         for x in range(self.max_width):
             for y in range(self.max_height):
                 if cData[x + (y*self.max_width)] == '1':
