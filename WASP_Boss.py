@@ -6,6 +6,7 @@ import datetime
 import optparse
 import os
 import re
+import shutil
 import sys
 import uuid
 import xml.dom.minidom
@@ -16,13 +17,16 @@ class Job:
     def __init__(self, manager, message, directory):
         self.manager = manager
         self.command = None
-        self.directory = directory
+        self.directory = None
         self.files = list()
         self.jobId = None
         dom = xml.dom.minidom.parseString(message)
         job = dom.getElementsByTagName("job")
         self.command = str(job[0].getAttribute("command"))
         self.jobId = str(job[0].getAttribute("id"))
+        self.directory = os.path.join(directory, self.jobId)
+        if not os.path.isdir(self.directory):
+            os.mkdir(self.directory)
         children = job[0].childNodes
         for child in children:
             fname = child.getAttribute("filename")
@@ -35,8 +39,7 @@ class Job:
         return
     
     def completed(self):
-        for rmFile in self.files:
-            os.remove(os.path.join(self.directory, rmFile))
+        shutil.rmtree(self.directory)
         self.command = None
         self.directory = None
         self.files = None
@@ -72,6 +75,7 @@ class Boss:
         self.xmpp.set_authd_callback(self.has_connected)
         self.xmpp.set_buddy_quit_callback(self.buddy_quit)
         self.xmpp.set_direct_msg_callback(self.message)
+        self.xmpp.set_finish_callback(self.finish)
         self.workers = list()
         self.readyWorkers = collections.deque()
         self.workerJobs = dict()
@@ -124,12 +128,14 @@ class Boss:
         return
     
     def message(self, msg, name):
+        print "Msg from:", name
         dom = xml.dom.minidom.parseString(msg)
-        type = dom.nodeName
+        type = dom.firstChild.nodeName
         #type = "worker_ready|job|job_completed"
+        print "    type =",type
         if type == "job":
-            self.jobs.append(Command(name, msg, self.directory))
-        elif type == "job_completed:":
+            self.jobs.append(Job(name, msg, self.directory))
+        elif type == "job_completed":
             if name in self.workerJobs:
                 j = self.workerJobs[name]
                 j.completed()
@@ -142,6 +148,9 @@ class Boss:
                 self.workers.append(name)
             if name not in self.readyWorkers:
                 self.readyWorkers.append(name)
+        elif type == "request_info":
+            message = "go away!"
+            self.xmpp.send(message, name)
         return
 
 

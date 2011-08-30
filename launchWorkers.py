@@ -1,5 +1,6 @@
 import optparse
 import os
+import shutil
 import subprocess
 import sys
 
@@ -32,7 +33,7 @@ if __name__ == "__main__":
     workers = int(float(options.number))
     start = int(float(options.startnum))
     
-    mydir = os.getcwd() + "/" + tmp_dir
+    mydir = os.path.join(os.getcwd(), "/%s" % tmp_dir)
     if not os.path.isdir(mydir):
         os.mkdir(mydir)
     
@@ -43,9 +44,11 @@ if __name__ == "__main__":
         elif (x + start) < 100:
             num = "0%s" % str(x + start)
         
-        wkrDir = mydir + "/worker" + num
+        wkrDir = os.path.join(mydir, "worker%s" % num)
         if not os.path.isdir(wkrDir):
             os.mkdir(wkrDir)
+        
+        shutil.copy(os.path.join(os.getcwd(), "ar"), wkrDir)
         
         fname = wkrDir + "/run.pbs"
         out = open(fname, 'w')
@@ -57,6 +60,7 @@ if __name__ == "__main__":
         out.write("--password=WASPaeolus-worker%s " % str(num))
         out.write("--dir=%s " % str(wkrDir))
         out.write("--boss=%s " % str(options.boss))
+        out.write("--pypath=/home/bthomas/python/bin/python ")
         out.write("\n")
         out.close()
 

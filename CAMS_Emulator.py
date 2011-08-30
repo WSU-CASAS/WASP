@@ -23,11 +23,15 @@ def get_datetime(newVal):
     date = re.split('-', stuff[0])
     time = re.split(':', stuff[1])
     sec = []
-    if re.search('\.', time[2]) == None:
-        sec.append(time[2])
-        sec.append("0")
-    else:
-        sec = re.split('\.', time[2])
+    try:
+        if re.search('\.', time[2]) == None:
+            sec.append(time[2])
+            sec.append("0")
+        else:
+            sec = re.split('\.', time[2])
+    except:
+        print newVal
+        z = int("45.2")
     dt = datetime.datetime(int(date[0]),
                            int(date[1]),
                            int(date[2]),
@@ -279,7 +283,7 @@ class Emulator:
         return
     
     def load_movement(self):
-        print "Loading movement file."
+        #print "Loading movement file."
         fileIn = open(self.file_movement)
         mData = fileIn.readlines()
         fileIn.close()
@@ -289,7 +293,7 @@ class Emulator:
             if str(line).strip() != "":
                 self.movement.append(PersonEvent(line))
         
-        print "Adding extra buffers."
+        #print "Adding extra buffers."
         startDT = self.movement[0].dt
         endDT = self.movement[-1].dt
         window = datetime.timedelta(0, 0.25)
@@ -299,10 +303,10 @@ class Emulator:
             self.movement.append(PersonEvent("%s\t0\t-1\t-1\t0.0" % str(extra)))
             extra += window
         
-        print "Sorting movement events."
+        #print "Sorting movement events."
         self.movement.sort(cmp=compare_events)
         
-        print "Filling empty buffer x/y values."
+        #print "Filling empty buffer x/y values."
         mSpeed = int(self.movement[0].speed)
         mx = str(self.movement[0].x)
         my = str(self.movement[0].y)
@@ -347,8 +351,8 @@ class Emulator:
         for x in range(len(self.sensors)):
             self.sensors[x].set_event_func(self.add_sensor_event)
         
-        self.print_obj(self.space)
-        self.print_view()
+        #self.print_obj(self.space)
+        #self.print_view()
         return
     
     def spread_sensor(self, id, sX, sY, radius=7):
@@ -396,7 +400,7 @@ class Emulator:
             print out
     
     def emulate(self):
-        print "Emulating environment."
+        #print "Emulating environment."
         for m in range(len(self.movement)):
             for s in range(len(self.sensors)):
                 self.sensors[s].apply_person_event(self.movement[m])

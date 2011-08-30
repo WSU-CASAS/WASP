@@ -16,10 +16,11 @@ import xml.dom.minidom
 #### Chromosome class
 ###############################################################################
 class Chromosome:
-    def __init__(self, filename, width, height, config):
+    def __init__(self, filename, width, height, config=dict()):
         self.width = int(float(width))
         self.height = int(float(height))
         self.config = config
+        self.filename = filename
         if filename != "":
             dom = xml.dom.minidom.parse(filename)
             chromo = dom.getElementsByTagName("chromosome")
@@ -83,9 +84,9 @@ class Chromosome:
         child.set_check(self.check)
         points = list()
         for x in range(self.config["crossover"]):
-            r = random.randint(1, len(self.data-2))
+            r = random.randint(1, len(self.data) - 2)
             while r in points:
-                r = random.randint(1, len(self.data-2))
+                r = random.randint(1, len(self.data) - 2)
             points.append(r)
         points.append(0)
         points.append(len(self.data))
@@ -133,6 +134,7 @@ class Pollinator:
         self.dir_chromosome = options.chromosome
         self.dir_nextgen = options.directory
         self.nextgen = int(float(options.generation))
+        self.seed = options.seed
         self.config = dict()
         self.config["mutation"] = float(options.mutation_rate)
         self.config["crossover"] = int(float(options.crossover))
@@ -227,6 +229,8 @@ class Pollinator:
             self.chromosomes.append(Chromosome(os.path.join(self.dir_chromosome, cFile),
                                                self.max_width, self.max_height,
                                                self.config))
+        for x in range(len(self.chromosomes)):
+            self.chromosomes[x].set_check(self.valid_sensor_location)
         return
     
     def breed_children(self):
@@ -242,7 +246,7 @@ class Pollinator:
             turns = mates
             if x < spares:
                 turns += 1
-            for y in turns:
+            for y in range(turns):
                 self.children.append(self.chromosomes[x] + self.chromosomes[x+y])
         
         for x in range(len(self.children)):
@@ -250,7 +254,7 @@ class Pollinator:
                 self.children[x].generation = self.nextgen
             
             if self.children[x].filename == "":
-                fname = os.path.join(self.dir_chromosome,
+                fname = os.path.join(self.dir_nextgen,
                                      "%s.xml" % str(uuid.uuid4().hex))
                 out = open(fname, 'w')
                 out.write(str(self.children[x]))
@@ -261,9 +265,19 @@ class Pollinator:
     
     def run(self):
         self.load_site()
-        self.load_chromosomes()
-        self.chromosomes.sort()
-        self.breed_children()
+        if self.seed == None:
+            self.load_chromosomes()
+            self.chromosomes.sort()
+            self.breed_children()
+        else:
+            for x in range(int(float(self.seed))):
+                chromo = self.build_seed(10)
+                chromo.generation = 0
+                fname = os.path.join(self.dir_nextgen,
+                                     "%s.xml" % str(uuid.uuid4().hex))
+                out = open(fname, 'w')
+                out.write(str(chromo))
+                out.close()
         return
 
 
@@ -287,6 +301,9 @@ if __name__ == "__main__":
                       "--generation",
                       dest="generation",
                       help="Value for next generation.")
+    parser.add_option("--seed",
+                      dest="seed",
+                      help="Size of new seed population.")
     parser.add_option("-r",
                       "--random",
                       dest="random",

@@ -157,6 +157,14 @@ if __name__ == "__main__":
         
         fitness = float(sum(values)) / float(len(values))
         print "Fitness =",fitness
-        
-        
+        dom = xml.dom.minidom.parse(os.path.join(options.work, options.site))
+        site = dom.getElementsByTagName("site")
+        max_width = int(float(site[0].getAttribute("max_width")))
+        max_height = int(float(site[0].getAttribute("max_height")))
+        chrom = Chromosome(os.path.join(options.work, options.chromosome),
+                           max_width, max_height)
+        chrom.fitness = fitness
+        out = open(chrom.filename, 'w')
+        out.write(str(chrom))
+        out.close()
 
