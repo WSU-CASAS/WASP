@@ -33,7 +33,7 @@ if __name__ == "__main__":
     workers = int(float(options.number))
     start = int(float(options.startnum))
     
-    mydir = os.path.join(os.getcwd(), "/%s" % tmp_dir)
+    mydir = os.path.join(os.getcwd(), "%s" % tmp_dir)
     if not os.path.isdir(mydir):
         os.mkdir(mydir)
     
@@ -50,7 +50,7 @@ if __name__ == "__main__":
         
         shutil.copy(os.path.join(os.getcwd(), "ar"), wkrDir)
         
-        fname = wkrDir + "/run.pbs"
+        fname = os.path.join(wkrDir, "run.pbs")
         out = open(fname, 'w')
         out.write("#PBS -l nodes=1:ppn=1,walltime=24:00:00\n")
         out.write("#PBS -N wkr%s\n" % str(num))

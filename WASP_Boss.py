@@ -16,50 +16,35 @@ import xml.dom.minidom
 class Job:
     def __init__(self, manager, message, directory):
         self.manager = manager
-        self.command = None
-        self.directory = None
-        self.files = list()
+        self.runId = None
+        self.chromosome = None
         self.jobId = None
+        self.data_files = None
         dom = xml.dom.minidom.parseString(message)
         job = dom.getElementsByTagName("job")
-        self.command = str(job[0].getAttribute("command"))
         self.jobId = str(job[0].getAttribute("id"))
-        self.directory = os.path.join(directory, self.jobId)
-        if not os.path.isdir(self.directory):
-            os.mkdir(self.directory)
-        children = job[0].childNodes
-        for child in children:
-            fname = child.getAttribute("filename")
-            if fname not in self.files:
-                self.files.append(fname)
-                out = open(os.path.join(self.directory, fname), 'w')
-                data = child.firstChild
-                out.write(data.toxml())
-                out.close()
+        self.runId = str(job[0].getAttribute("run_id"))
+        chrom = dom.getElementsByTagName("chromosome_file")
+        self.chromosome = str(chrom[0].toxml())
+        df = dom.getElementsByTagName("data_files")
+        self.data_files = str(df[0].toxml())
         return
     
     def completed(self):
-        shutil.rmtree(self.directory)
-        self.command = None
-        self.directory = None
-        self.files = None
         self.jobId = None
+        self.chromosome = None
+        self.runId = None
+        self.data_files = None
         return
     
     def __str__(self):
         job = "<job "
         job += "id=\"%s\" " % str(self.jobId)
+        job += "run_id=\"%s\" " % str(self.runId)
         job += "manager=\"%s\" " % str(self.manager)
-        job += "command=\"%s\" " % str(self.command)
         job += ">"
-        for f in self.files:
-            job += "<data "
-            job += "filename=\"%s\" >" % str(f)
-            data = open(os.path.join(self.directory, f))
-            info = data.readlines()
-            job += "".join(info)
-            data.close()
-            job += "</data>"
+        job += str(self.chromosome)
+        job += str(self.data_files)
         job += "</job>"
         return job
 
@@ -127,6 +112,34 @@ class Boss:
         self.xmpp.callLater(5, self.send_work)
         return
     
+    def recv_file(self, fileDom):
+        fname = str(fileDom.getAttribute("filename"))
+        rid = str(fileDom.getAttribute("run_id"))
+        dir = os.path.join(self.directory, rid)
+        if not os.path.isdir(dir):
+            os.mkdir(dir)
+        out = open(os.path.join(dir, fname), 'w')
+        data = fileDom.firstChild
+        out.write(data.toxml())
+        data.close()
+        return
+    
+    def request_file(self, fileDom, name):
+        fname = str(fileDom.getAttribute("filename"))
+        rid = str(fileDom.getAttribute("run_id"))
+        dir = os.path.join(self.directory, rid)
+        if os.path.isfile(os.path.join(dir, fname)):
+            msg = "<send_file "
+            msg += "filename=\"%s\" " % fname
+            msg += "run_id=\"%s\" >" % rid
+            data = open(os.path.join(dir, fname))
+            info = data.readlines()
+            msg += "".join(info)
+            data.close()
+            msg += "</send_file>"
+            self.xmpp.send(msg, name)
+        return
+    
     def message(self, msg, name):
         print "Msg from:", name
         dom = xml.dom.minidom.parseString(msg)
@@ -148,6 +161,10 @@ class Boss:
                 self.workers.append(name)
             if name not in self.readyWorkers:
                 self.readyWorkers.append(name)
+        elif type == "send_file":
+            self.recv_file(dom.firstChild)
+        elif type == "request_file":
+            self.request_file(dom.firstChild, name)
         elif type == "request_info":
             message = "go away!"
             self.xmpp.send(message, name)

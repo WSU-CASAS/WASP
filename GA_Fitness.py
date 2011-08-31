@@ -17,12 +17,12 @@ class CookAr:
         self.file_chromosome = str(options.chromosome)
         self.file_site = str(options.site)
         self.working_dir = str(options.work)
-        self.file_rawdata = os.path.join(self.working_dir, str(data_file))
-        dom = xml.dom.minidom.parse(os.path.join(self.working_dir, self.file_site))
+        self.file_rawdata = str(data_file)
+        dom = xml.dom.minidom.parse(self.file_site)
         site = dom.getElementsByTagName("site")
         self.max_width = int(float(site[0].getAttribute("max_width")))
         self.max_height = int(float(site[0].getAttribute("max_height")))
-        self.chromosome = Chromosome(os.path.join(self.working_dir, self.file_chromosome),
+        self.chromosome = Chromosome(self.file_chromosome,
                                      self.max_width, self.max_height)
         self.annotations = list()
         name = str(uuid.uuid4().hex)
@@ -94,7 +94,6 @@ class CookAr:
                              stdout=subprocess.PIPE)
         
         while p.poll() == None:
-            print "not done, sleeping..."
             time.sleep(1)
         data = p.stdout.readlines()
         for line in data:
@@ -102,9 +101,6 @@ class CookAr:
             if accObj != None:
                 print accObj.group(1)
                 self.fitness = float(accObj.group(1)) * 100.0
-        
-        os.remove(self.file_data)
-        os.remove(self.file_config)
         return
 
 
@@ -157,12 +153,11 @@ if __name__ == "__main__":
         
         fitness = float(sum(values)) / float(len(values))
         print "Fitness =",fitness
-        dom = xml.dom.minidom.parse(os.path.join(options.work, options.site))
+        dom = xml.dom.minidom.parse(options.site)
         site = dom.getElementsByTagName("site")
         max_width = int(float(site[0].getAttribute("max_width")))
         max_height = int(float(site[0].getAttribute("max_height")))
-        chrom = Chromosome(os.path.join(options.work, options.chromosome),
-                           max_width, max_height)
+        chrom = Chromosome(options.chromosome, max_width, max_height)
         chrom.fitness = fitness
         out = open(chrom.filename, 'w')
         out.write(str(chrom))

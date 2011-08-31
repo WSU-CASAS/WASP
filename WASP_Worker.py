@@ -5,6 +5,7 @@ import optparse
 import os
 import random
 import re
+import shutil
 import subprocess
 import sys
 import uuid
@@ -25,7 +26,12 @@ class Worker:
         self.xmpp.set_authd_callback(self.has_connected)
         self.xmpp.set_direct_msg_callback(self.message)
         self.xmpp.set_finish_callback(self.finish)
-        self.files = list()
+        self.waiting_on_files = 0
+        self.job_id = None
+        self.job_run_id = None
+        self.job_files = None
+        self.job_directory = None
+        self.job_chromosome = None
         return
     
     def connect(self):
@@ -40,60 +46,117 @@ class Worker:
         self.xmpp.disconnect()
         return
     
+    def request_file(self, filename, run_id):
+        msg = "<request_file "
+        msg += "filename=\"%s\" " % str(filename)
+        msg += "run_id=\"%s\" />" % str(run_id)
+        self.xmpp.send(msg, self.boss)
+        return
+    
+    def recv_file(self, fileDom):
+        fname = str(fileDom.getAttribute("filename"))
+        rid = str(fileDom.getAttribute("run_id"))
+        dir = os.path.join(self.directory, rid)
+        if not os.path.isdir(dir):
+            os.mkdir(dir)
+        out = open(os.path.join(dir, fname), 'w')
+        data = fileDom.firstChild
+        out.write(data.toxml())
+        data.close()
+        return
+    
     def message(self, msg, name):
         print "Msg from:", name
         dom = xml.dom.minidom.parseString(msg)
-        job = dom.firstChild
-        command = str(job.getAttribute("command"))
-        children = job.childNodes
-        for child in children:
-            fname = child.getAttribute("filename")
-            print "    ", fname
-            if fname not in self.files:
-                self.files.append(fname)
-            out = open(os.path.join(self.directory, fname), 'w')
-            data = child.firstChild
-            out.write(data.toxml())
-            out.close()
-        dfiles = dict()
-        for f in self.files:
-            if f != command and f != "site.xml":
-                dfiles[f] = "%s.xml" % str(uuid.uuid4().hex)
+        type = dom.firstChild.nodeName
+        if type == "send_file":
+            self.recv_file(dom.firstChild)
+            self.waiting_on_files -= 1
+        elif type == "job":
+            self.get_job(dom.firstChild)
+        return
+    
+    def get_job(self, job):
+        self.waiting_on_files = 0
+        self.job_id = str(job.getAttribute("id"))
+        self.job_run_id = str(job.getAttribute("run_id"))
+        self.job_directory = os.path.join(self.directory, self.job_id)
+        if not os.path.isdir(self.job_directory):
+            os.mkdir(self.job_directory)
+        crfDom = job.getElementsByTagName("chromosome_file")
+        self.job_chromosome = crfDom[0].getAttribute("filename")
+        out = open(os.path.join(self.job_directory, self.job_chromosome), 'w')
+        data = crfDom[0].firstChild
+        out.write(data.toxml())
+        out.close()
+        data = None
+        dfDom = job.getElementsByTagName("data_files")
+        self.job_files = str(dfDom[0].firstChild.toxml()).split(",")
+        for jf in self.job_files:
+            absName = os.path.join(self.directory, self.job_run_id, jf)
+            if not os.path.isfile(path):
+                self.request_file(jf, self.job_run_id)
+                self.waiting_on_files += 1
+        if "site.xml" in self.job_files:
+            self.job_files.remove("site.xml")
+        self.xmpp.callLater(1, self.do_job)
+        return
+    
+    def do_job(self):
+        if self.waiting_on_files > 0:
+            self.xmpp.callLater(1, self.do_job)
+            return
+        
+        if self.job_chromosome == None:
+            return
         
         emulated = list()
-        for df in dfiles.keys():
+        #for df in dfiles.keys():
+        for df in self.job_files:
+            outFile = os.path.join(self.job_directory, "%s.xml" % str(uuid.uuid4().hex))
             cmd = "%s CAMS_Emulator.py " % str(self.pypath)
-            cmd += "--site=%s " % os.path.join(self.directory, "site.xml")
-            cmd += "--movement=%s " % os.path.join(self.directory, df)
-            cmd += "--chromosome=%s " % os.path.join(self.directory, command)
-            cmd += "--output=%s" % os.path.join(self.directory, dfiles[df])
+            cmd += "--site=%s " % os.path.join(self.job_directory, "site.xml")
+            cmd += "--movement=%s " % os.path.join(self.directory,
+                                                   self.job_run_id,
+                                                   df)
+            cmd += "--chromosome=%s " % os.path.join(self.job_directory,
+                                                     self.job_chromosome)
+            cmd += "--output=%s" % outFile
             subprocess.call(str(cmd).split())
-            #print cmd
-            #print os.listdir(self.directory)
-            emulated.append(str(dfiles[df]))
+            emulated.append(outFile)
+        
+        cmd = "cp %s %s" % (os.path.join(self.directory, "ar"),
+                            os.path.join(self.job_directory, "ar"))
+        subprocess.call(str(cmd).split())
         
         cmd = "%s GA_Fitness.py " % str(self.pypath)
         cmd += "--files=%s " % ",".join(emulated)
-        cmd += "--chromosome=%s " % str(command)
-        cmd += "--site=site.xml "
+        cmd += "--chromosome=%s " % os.path.join(self.job_directory,
+                                                 self.job_chromosome)
+        cmd += "--site=%s " % os.path.join(self.directory,
+                                           self.job_run_id,
+                                           "site.xml")
         cmd += "--method=CookAr "
-        cmd += "--work=%s" % str(self.directory)
+        cmd += "--work=%s" % str(self.job_directory)
         subprocess.call(str(cmd).split())
         #print cmd
         #print os.listdir(self.directory)
         
         msg = "<job_completed>"
-        msg += "<data filename=\"%s\" >" % str(command)
-        data = open(os.path.join(self.directory, command))
+        msg += "<data filename=\"%s\" >" % str(self.job_chromosome)
+        data = open(os.path.join(self.job_directory, self.job_chromosome))
         info = data.readlines()
         msg += "".join(info)
         data.close()
         msg += "</data></job_completed>"
         self.xmpp.send(msg, self.boss)
         
-        for fname in self.files:
-            os.remove(os.path.join(self.directory, fname))
-        self.files = list()
+        shutil.rmtree(self.job_directory)
+        self.job_chromosome = None
+        self.job_directory = None
+        self.job_files = None
+        self.job_id = None
+        self.job_run_id = None
         return
 
 

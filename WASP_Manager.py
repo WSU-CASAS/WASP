@@ -34,6 +34,7 @@ class Manager:
         self.xmpp.set_authd_callback(self.has_connected)
         self.xmpp.set_direct_msg_callback(self.message)
         self.xmpp.set_finish_callback(self.finish)
+        self.run_id = str(uuid.uuid4().hex)
         self.running_jobs = 0
         dom = xml.dom.minidom.parse(os.path.join(self.directory, "site.xml"))
         site = dom.getElementsByTagName("site")
@@ -79,41 +80,51 @@ class Manager:
         self.xmpp.disconnect()
         return
     
+    def send_files(self):
+        msg = "<send_file "
+        msg += "filename=\"site.xml\" " 
+        msg += "run_id=\"%s\" >" % self.run_id
+        data = open(os.path.join(self.directory, "site.xml"))
+        info = data.readlines()
+        msg += "".join(info)
+        data.close()
+        msg += "</send_file>"
+        self.xmpp.send(msg, self.boss)
+        
+        dFiles = os.listdir(self.data_dir)
+        for dfile in dFiles:
+            msg = "<send_file "
+            msg += "filename=\"%s\" " % dfile
+            msg += "run_id=\"%s\" >" % self.run_id
+            data = open(os.path.join(self.data_dir, dfile))
+            info = data.readlines()
+            msg += "".join(info)
+            data.close()
+            msg += "</send_file>"
+            self.xmpp.send(msg, self.boss)
+        self.xmpp.callLater(1, self.do_work)
+        return
+    
     def do_work(self):
         chroms = list()
         cFiles = os.listdir(self.generation_dir)
         for cFile in cFiles:
             chroms.append(Chromosome(os.path.join(self.generation_dir, cFile),
                                      self.max_width, self.max_height))
-        msg0 = "<job "
-        msg0 += "manager=\"%s\" " % str(self.username)
-        msg1 = "<data "
-        msg1 += "filename=\"site.xml\" >"
-        data = open(os.path.join(self.directory, "site.xml"))
-        info = data.readlines()
-        msg1 += "".join(info)
-        data.close()
-        msg1 += "</data>"
-        dFiles = os.listdir(self.data_dir)
-        for dFile in dFiles:
-            msg1 += "<data "
-            msg1 += "filename=\"%s\" >" % str(dFile)
-            data = open(os.path.join(self.data_dir, dFile))
-            info = data.readlines()
-            msg1 += "".join(info)
-            data.close()
-            msg1 += "</data>"
-        
+        data_files = os.listdir(self.data_dir)
         for c in chroms:
             if c.fitness == -1:
-                msg = str(msg0)
-                msg += "id=\"%s\" " % str(uuid.uuid4().hex)
-                msg += "command=\"%s\" >" % os.path.basename(str(c.filename))
-                msg += str(msg1)
-                msg += "<data "
+                msg = "<job "
+                msg += "manager=\"%s\" " % str(self.username)
+                msg += "run_id=\"%s\" " % self.run_id
+                msg += "id=\"%s\" >" % str(uuid.uuid4().hex)
+                msg += "<chromosome_file "
                 msg += "filename=\"%s\" >" % os.path.basename(str(c.filename))
                 msg += str(c)
-                msg += "</data>"
+                msg += "</chromosome_file>"
+                msg += "<data_files>"
+                msg += ",".join(data_files)
+                msg += "</data_files>"
                 msg += "</job>"
                 print len(msg)
                 self.xmpp.send(msg, self.boss)
