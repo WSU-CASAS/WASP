@@ -73,7 +73,7 @@ class Manager:
         return
     
     def has_connected(self):
-        self.xmpp.callLater(1, self.do_work)
+        self.xmpp.callLater(1, self.send_files)
         return
     
     def finish(self):
@@ -124,6 +124,7 @@ class Manager:
                 msg += "</chromosome_file>"
                 msg += "<data_files>"
                 msg += ",".join(data_files)
+                msg += ",site.xml"
                 msg += "</data_files>"
                 msg += "</job>"
                 print len(msg)

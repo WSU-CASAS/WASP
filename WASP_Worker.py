@@ -62,7 +62,7 @@ class Worker:
         out = open(os.path.join(dir, fname), 'w')
         data = fileDom.firstChild
         out.write(data.toxml())
-        data.close()
+        out.close()
         return
     
     def message(self, msg, name):
@@ -94,7 +94,7 @@ class Worker:
         self.job_files = str(dfDom[0].firstChild.toxml()).split(",")
         for jf in self.job_files:
             absName = os.path.join(self.directory, self.job_run_id, jf)
-            if not os.path.isfile(path):
+            if not os.path.isfile(absName):
                 self.request_file(jf, self.job_run_id)
                 self.waiting_on_files += 1
         if "site.xml" in self.job_files:
@@ -115,7 +115,9 @@ class Worker:
         for df in self.job_files:
             outFile = os.path.join(self.job_directory, "%s.xml" % str(uuid.uuid4().hex))
             cmd = "%s CAMS_Emulator.py " % str(self.pypath)
-            cmd += "--site=%s " % os.path.join(self.job_directory, "site.xml")
+            cmd += "--site=%s " % os.path.join(self.directory,
+                                               self.job_run_id,
+                                               "site.xml")
             cmd += "--movement=%s " % os.path.join(self.directory,
                                                    self.job_run_id,
                                                    df)

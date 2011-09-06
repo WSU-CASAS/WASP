@@ -121,7 +121,7 @@ class Boss:
         out = open(os.path.join(dir, fname), 'w')
         data = fileDom.firstChild
         out.write(data.toxml())
-        data.close()
+        out.close()
         return
     
     def request_file(self, fileDom, name):
@@ -166,7 +166,15 @@ class Boss:
         elif type == "request_file":
             self.request_file(dom.firstChild, name)
         elif type == "request_info":
-            message = "go away!"
+            message = "managers"
+            message += "\n    ".join(self.managers)
+            message += "\n" + "*"*20 
+            message += "workers"
+            message += "\n    ".join(self.workers)
+            message += "\n" + "*"*20
+            message += "ready workers"
+            message += "\n    ".join(self.readyWorkers)
+            message += "\n"
             self.xmpp.send(message, name)
         return
 

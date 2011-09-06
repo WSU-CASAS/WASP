@@ -63,5 +63,6 @@ if __name__ == "__main__":
         out.write("--pypath=/home/bthomas/python/bin/python ")
         out.write("\n")
         out.close()
-
+        
+        subprocess.call(str("qsub %s" % fname).split())
 
