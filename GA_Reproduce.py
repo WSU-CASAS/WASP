@@ -82,22 +82,29 @@ class Chromosome:
     def __add__(self, other):
         child = Chromosome("", self.width, self.height, self.config)
         child.set_check(self.check)
-        points = list()
-        for x in range(self.config["crossover"]):
-            r = random.randint(1, len(self.data) - 2)
-            while r in points:
+        valid_child = False
+        while not valid_child:
+            points = list()
+            for x in range(self.config["crossover"]):
                 r = random.randint(1, len(self.data) - 2)
-            points.append(r)
-        points.append(0)
-        points.append(len(self.data))
-        points.sort()
-        child.data = list()
-        for x in range(len(points) - 1):
-            if (x % 2) == 0:
-                child.data = list(child.data + self.data[points[x]:points[x+1]])
+                while r in points:
+                    r = random.randint(1, len(self.data) - 2)
+                points.append(r)
+            points.append(0)
+            points.append(len(self.data))
+            points.sort()
+            child.data = list()
+            for x in range(len(points) - 1):
+                if (x % 2) == 0:
+                    child.data = list(child.data + self.data[points[x]:points[x+1]])
+                else:
+                    child.data = list(child.data + other.data[points[x]:points[x+1]])
+            child.mutate()
+            if self.config["size_limit"] != None:
+                if str("".join(self.data)).count("1") <= self.config["size_limit"]:
+                    valid_child = True
             else:
-                child.data = list(child.data + other.data[points[x]:points[x+1]])
-        child.mutate()
+                valid_child = True
         return child
     
     def __cmp__(self, other):
