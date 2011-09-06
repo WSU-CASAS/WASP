@@ -142,6 +142,11 @@ class Pollinator:
         self.config["crossover"] = int(float(options.crossover))
         self.config["survival"] = float(options.survival_rate)
         self.config["reproduction"] = float(options.reproduction_rate)
+        self.config["seed_size"] = int(float(options.seed_size))
+        if options.size_limit != None:
+            self.config["size_limit"] = int(float(options.size_limit))
+        else:
+            self.config["size_limit"] = None
         self.space = None
         self.max_width = 0
         self.max_height = 0
@@ -276,7 +281,7 @@ class Pollinator:
             self.breed_children()
         else:
             for x in range(int(float(self.seed))):
-                chromo = self.build_seed(10)
+                chromo = self.build_seed(self.config["seed_size"])
                 chromo.generation = 0
                 fname = os.path.join(self.dir_nextgen,
                                      "%s.xml" % str(uuid.uuid4().hex))
@@ -329,6 +334,13 @@ if __name__ == "__main__":
                       dest="reproduction_rate",
                       help="Percent of parents that get to reproduce.",
                       default="0.25")
+    parser.add_option("--seed_size",
+                      dest="seed_size",
+                      help="Number of sensors to seed with.",
+                      default="10")
+    parser.add_option("--size_limit",
+                      dest="size_limit",
+                      help="Put a limit on number of sensors.")
     (options, args) = parser.parse_args()
     if None in [options.site, options.chromosome, options.directory, options.generation]:
         if options.site == None:

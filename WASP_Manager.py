@@ -30,6 +30,8 @@ class Manager:
         self.crossover = int(float(options.crossover))
         self.survival_rate = float(options.survival_rate)
         self.reproduction_rate = float(options.reproduction_rate)
+        self.seed_size = options.seed_size
+        self.size_limit = options.size_limit
         self.xmpp = xmpp.Connection(self.name)
         self.xmpp.set_authd_callback(self.has_connected)
         self.xmpp.set_direct_msg_callback(self.message)
@@ -64,7 +66,12 @@ class Manager:
             cmd += "-d %s " % self.generation_dir
             cmd += "-r %f " % random.random()
             cmd += "-g %s " % str(self.generation)
-            cmd += "--seed=%s" % str(self.population)
+            cmd += "--seed=%s " % str(self.population)
+            if self.seed_size != None:
+                cmd += "--seed_size=%s " % str(self.seed_size)
+            if self.size_limit != None:
+                cmd += "--size_limit=%s " % str(self.size_limit)
+            cmd = str(cmd).strip()
             subprocess.call(str(cmd).split())
         return
     
@@ -166,7 +173,12 @@ class Manager:
         cmd += "--mutation_rate=%f " % self.mutation_rate
         cmd += "--crossover=%s " % str(self.crossover)
         cmd += "--survival_rate=%f " % self.survival_rate
-        cmd += "--reproduction_rate=%f" % self.reproduction_rate
+        cmd += "--reproduction_rate=%f " % self.reproduction_rate
+        if self.seed_size != None:
+            cmd += "--seed_size=%s " % str(self.seed_size)
+        if self.size_limit != None:
+            cmd += "--size_limit=%s " % str(self.size_limit)
+        cmd = str(cmd).strip()
         subprocess.call(str(cmd).split())
         self.xmpp.callLater(1, self.do_work)
         return
@@ -222,6 +234,12 @@ if __name__ == "__main__":
                       dest="reproduction_rate",
                       help="Percent of parents that get to reproduce.",
                       default="0.25")
+    parser.add_option("--seed_size",
+                      dest="seed_size",
+                      help="Number of sensors to seed with.")
+    parser.add_option("--size_limit",
+                      dest="size_limit",
+                      help="Put a limit on number of sensors.")
     (options, args) = parser.parse_args()
     if None in [options.jid, options.password, options.dir, options.data]:
         if options.jid == None:
