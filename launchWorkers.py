@@ -33,7 +33,10 @@ if __name__ == "__main__":
     workers = int(float(options.number))
     start = int(float(options.startnum))
     
-    mydir = os.path.join(os.getcwd(), "%s" % tmp_dir)
+    mdir = "/mnt/pvfs2/bthomas"
+    if not os.path.isdir(mdir):
+        os.mkdir(mdir)
+    mydir = os.path.join(mdir, "%s" % tmp_dir)
     if not os.path.isdir(mydir):
         os.mkdir(mydir)
     
@@ -55,6 +58,7 @@ if __name__ == "__main__":
         out.write("#PBS -l nodes=1:ppn=1,walltime=24:00:00\n")
         out.write("#PBS -N wkr%s\n" % str(num))
         out.write("cd ~/wasp\n")
+        out.write("sleep 20\n")
         out.write("~/python/bin/python WASP_Worker.py ")
         out.write("--jid=aeolus-worker%s@node01 " % str(num))
         out.write("--password=WASPaeolus-worker%s " % str(num))

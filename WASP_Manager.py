@@ -32,6 +32,8 @@ class Manager:
         self.reproduction_rate = float(options.reproduction_rate)
         self.seed_size = options.seed_size
         self.size_limit = options.size_limit
+        self.max_generations = options.max_generations
+        self.quit_on_generation = False
         self.xmpp = xmpp.Connection(self.name)
         self.xmpp.set_authd_callback(self.has_connected)
         self.xmpp.set_direct_msg_callback(self.message)
@@ -142,6 +144,13 @@ class Manager:
     def message(self, msg, name):
         print "Msg from:", name
         print msg
+        if name == self.boss:
+            if msg == "quit-now":
+                self.xmpp.callLater(0, self.finish)
+                return
+            elif msg == "quit-generation":
+                self.quit_on_generation = True
+                return
         dom = xml.dom.minidom.parseString(msg)
         if dom.firstChild.nodeName == "job_completed":
             children = dom.firstChild.childNodes
@@ -154,11 +163,18 @@ class Manager:
             self.running_jobs -= 1
             print "running jobs:",self.running_jobs
             if self.running_jobs == 0:
-                self.xmpp.callLater(1,self.next_generation)
+                self.xmpp.callLater(1, self.next_generation)
         return
     
     def next_generation(self):
+        if self.quit_on_generation:
+            self.xmpp.callLater(0, self.finish)
+            return
         self.generation += 1
+        if self.max_generations != None:
+            if int(float(self.max_generations)) <= self.generation:
+                self.xmpp.callLater(0, self.finish)
+                return
         last_gen_dir = str(self.generation_dir)
         self.generation_dir = os.path.join(self.dna, str(self.generation))
         if os.path.isdir(self.generation_dir):
@@ -179,6 +195,7 @@ class Manager:
         if self.size_limit != None:
             cmd += "--size_limit=%s " % str(self.size_limit)
         cmd = str(cmd).strip()
+        print cmd
         subprocess.call(str(cmd).split())
         self.xmpp.callLater(1, self.do_work)
         return
@@ -240,6 +257,9 @@ if __name__ == "__main__":
     parser.add_option("--size_limit",
                       dest="size_limit",
                       help="Put a limit on number of sensors.")
+    parser.add_option("--max_generations",
+                      dest="max_generations",
+                      help="Number of generations to acheive then quit.")
     (options, args) = parser.parse_args()
     if None in [options.jid, options.password, options.dir, options.data]:
         if options.jid == None:

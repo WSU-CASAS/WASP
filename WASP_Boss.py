@@ -66,6 +66,8 @@ class Boss:
         self.workerJobs = dict()
         self.managers = list()
         self.jobs = collections.deque()
+        self.job_count = 0
+        self.started = False
         return
     
     def connect(self):
@@ -73,17 +75,28 @@ class Boss:
         return
     
     def has_connected(self):
-        self.workers = list()
-        self.managers = list()
-        self.readyWorkers = collections.deque()
-        self.xmpp.callLater(1, self.send_work)
+        if not self.started:
+            self.started = True
+            self.xmpp.callLater(1, self.send_work)
+            self.xmpp.callLater(300, self.check_workers)
+            self.xmpp.callLater(300, self.update_status)
         return
     
     def finish(self):
         self.xmpp.disconnect()
         return
     
+    def update_status(self):
+        self.xmpp.set_status("%s layouts tested!" % str(self.job_count))
+        self.xmpp.callLater(60, self.update_status)
+        return
+    
     def buddy_quit(self, name):
+        print "buddy_quit( %s )" % str(name)
+        print "workers: ", self.workers
+        print "readyWorkers: ", self.readyWorkers
+        print "workerJobs: ", self.workerJobs
+        print "len(jobs): ", len(self.jobs)
         if name in self.workers:
             self.workers.remove(name)
         if name in self.workerJobs:
@@ -99,7 +112,13 @@ class Boss:
                     rmJobs.append(x)
             rmJobs.reverse()
             for x in rmJobs:
-                del self.jobs[x]
+                self.jobs.remove(self.jobs[x])
+        return
+    
+    def check_workers(self):
+        for wkr in self.workerJobs.keys():
+            self.xmpp.query_buddy(wkr)
+        self.xmpp.callLater(300, self.check_workers)
         return
     
     def send_work(self):
@@ -142,13 +161,23 @@ class Boss:
     
     def message(self, msg, name):
         print "Msg from:", name
+        if name == "bthomas@node01":
+            if msg == "quit-now":
+                for x in range(len(self.workers)):
+                    self.xmpp.send("quit", self.workers[x])
+                for x in range(len(self.managers)):
+                    self.xmpp.send("quit-now", self.managers[x])
+                return
+            if msg == "quit-generation":
+                for x in range(len(self.managers)):
+                    self.xmpp.send("quit-generation", self.managers[x])
         dom = xml.dom.minidom.parseString(msg)
         type = dom.firstChild.nodeName
-        #type = "worker_ready|job|job_completed"
         print "    type =",type
         if type == "job":
             self.jobs.append(Job(name, msg, self.directory))
         elif type == "job_completed":
+            self.job_count += 1
             if name in self.workerJobs:
                 j = self.workerJobs[name]
                 j.completed()
@@ -161,7 +190,12 @@ class Boss:
                 self.workers.append(name)
             if name not in self.readyWorkers:
                 self.readyWorkers.append(name)
+            if name in self.workerJobs:
+                self.jobs.appendleft(copy.copy(self.workerJobs[name]))
+                del self.workerJobs[name]
         elif type == "send_file":
+            if name not in self.managers:
+                self.managers.append(name)
             self.recv_file(dom.firstChild)
         elif type == "request_file":
             self.request_file(dom.firstChild, name)

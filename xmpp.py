@@ -337,7 +337,7 @@ class Connection:
             elif elem['type'] == "unavailable":
                 print "%s went byby..." % str(elem['from'])
                 if self.buddy_quit_callback != None:
-                    self.buddy_quit_callback(str(elem['from']))
+                    self.buddy_quit_callback(self.clean_jid(str(elem['from'])))
         else:
             print "presence (online)","="*40
             print elem.toXml()
@@ -398,6 +398,14 @@ class Connection:
     
     def log_finish(self, message):
         print self.name,"  msg:",message
+        return
+    
+    def query_buddy(self, buddy):
+        query = domish.Element(('jabber:client', 'presence'))
+        query['type'] = "probe"
+        query['to'] = str(buddy)
+        query['from'] = str(self.jid)
+        self.connection.send(query)
         return
     
     def set_status(self, value):

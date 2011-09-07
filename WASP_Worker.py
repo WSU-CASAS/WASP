@@ -17,6 +17,7 @@ class Worker:
     def __init__(self, options):
         self.name = "WASP Worker"
         self.started = datetime.datetime.now()
+        self.numjobs = 0
         self.username = str(options.jid)
         self.password = str(options.password)
         self.boss = str(options.boss)
@@ -39,7 +40,29 @@ class Worker:
         return
     
     def has_connected(self):
+        self.xmpp.subscribe_buddy(self.boss)
         self.xmpp.send("<worker_ready />", self.boss)
+        return
+    
+    def check_time(self):
+        max = datetime.timedelta(minutes=5)
+        life = datetime.datetime.now() - self.started
+        avgTime = life.seconds / self.numjobs
+        print "average job time in seconds: ", str(avgTime)
+        workTime = self.started + life
+        workTime += datetime.timedelta(seconds=(avgTime*3))
+        maxTime = self.started + max
+        print "lifetime: ", str(life)
+        print "workTime: ", str(workTime)
+        print "maxTime:  ", str(maxTime)
+        if maxTime < workTime:
+            self.xmpp.callLater(0, self.respawn)
+        return
+    
+    def respawn(self):
+        fname = os.path.abspath(os.path.join(self.directory, "run.pbs"))
+        subprocess.call(str("qsub %s" % fname).split())
+        self.xmpp.callLater(0, self.finish)
         return
     
     def finish(self):
@@ -67,6 +90,9 @@ class Worker:
     
     def message(self, msg, name):
         print "Msg from:", name
+        if msg == "quit":
+            self.xmpp.callLater(0, self.finish)
+            return
         dom = xml.dom.minidom.parseString(msg)
         type = dom.firstChild.nodeName
         if type == "send_file":
@@ -77,6 +103,7 @@ class Worker:
         return
     
     def get_job(self, job):
+        self.numjobs += 1
         self.waiting_on_files = 0
         self.job_id = str(job.getAttribute("id"))
         self.job_run_id = str(job.getAttribute("run_id"))
@@ -111,7 +138,6 @@ class Worker:
             return
         
         emulated = list()
-        #for df in dfiles.keys():
         for df in self.job_files:
             outFile = os.path.join(self.job_directory, "%s.xml" % str(uuid.uuid4().hex))
             cmd = "%s CAMS_Emulator.py " % str(self.pypath)
@@ -141,8 +167,6 @@ class Worker:
         cmd += "--method=CookAr "
         cmd += "--work=%s" % str(self.job_directory)
         subprocess.call(str(cmd).split())
-        #print cmd
-        #print os.listdir(self.directory)
         
         msg = "<job_completed>"
         msg += "<data filename=\"%s\" >" % str(self.job_chromosome)
@@ -159,6 +183,8 @@ class Worker:
         self.job_files = None
         self.job_id = None
         self.job_run_id = None
+        
+        self.xmpp.callLater(0, self.check_time)
         return
 
 
