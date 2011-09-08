@@ -101,6 +101,7 @@ class CookAr:
             if accObj != None:
                 print accObj.group(1)
                 self.fitness = float(accObj.group(1)) * 100.0
+        self.fitness += 10.0 * float(len(self.annotations))
         return
 
 

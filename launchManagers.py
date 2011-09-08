@@ -82,7 +82,7 @@ if __name__ == "__main__":
                     for sr in str(options.survival_rate).split(','):
                         for rr in str(options.reproduction_rate).split(','):
                             for ss in str(options.seed_size).split(','):
-                                for sl in str(options.seed_size).split(','):
+                                for sl in str(options.size_limit).split(','):
                                     for mg in str(options.max_generations).split(','):
                                         config.append(dict())
                                         config[-1]["sitedata"] = sd
@@ -116,6 +116,7 @@ if __name__ == "__main__":
         dnaDir = os.path.join(wkDir, "dna")
         if not os.path.isdir(dnaDir):
             os.mkdir(dnaDir)
+        shutil.copy(os.path.abspath("dna.db"), wkDir)
         
         sd = str(config[x]["sitedata"]).split(':')
         if not os.path.isfile(sd[0]):
@@ -149,6 +150,7 @@ if __name__ == "__main__":
         fname = os.path.join(wkDir, "run.sh")
         run = open(fname, 'w')
         run.write("#!/bin/sh\n\n")
+        run.write("sleep %s\n" % (x*5))
         run.write("%s\n" % cmd)
         run.close()
         subprocess.call(str("chmod +x %s" % fname).split())

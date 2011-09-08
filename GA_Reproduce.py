@@ -6,6 +6,7 @@ import os
 import random
 import re
 import shutil
+import sqlite3
 import sys
 import uuid
 import xml.dom.minidom
@@ -144,6 +145,7 @@ class Pollinator:
         self.dir_nextgen = options.directory
         self.nextgen = int(float(options.generation))
         self.seed = options.seed
+        self.population = options.population
         self.config = dict()
         self.config["mutation"] = float(options.mutation_rate)
         self.config["crossover"] = int(float(options.crossover))
@@ -248,6 +250,13 @@ class Pollinator:
         return
     
     def breed_children(self):
+        conn = sqlite3.connect(os.path.join(self.dir_chromosome, "../../dna.db"))
+        cr = conn.cursor()
+        for x in range(len(self.chromosomes)):
+            query = "UPDATE dna SET fitness=%f " % self.chromosomes[x].fitness
+            query += "WHERE id='%s'" % os.path.basename(self.chromosomes[x].filename)
+            cr.execute(query)
+        conn.commit()
         self.chromosomes.sort(reverse=True)
         survivers = int(len(self.chromosomes) * self.config["survival"])
         for x in range(survivers):
@@ -261,23 +270,43 @@ class Pollinator:
             if x < spares:
                 turns += 1
             for y in range(turns):
-                self.children.append(self.chromosomes[x] + self.chromosomes[x+y])
+                is_valid = False
+                while not is_valid:
+                    nchild = self.chromosomes[x] + self.chromosomes[x+y]
+                    query = "SELECT count(*) FROM dna WHERE "
+                    query += "chromosome='%s'" % str("".join(nchild.data))
+                    cr.execute(query)
+                    r = cr.fetchone()
+                    if str(r[0]) == "0":
+                        is_valid = True
+                        cname = "%s.xml" % str(uuid.uuid4().hex)
+                        fname = os.path.join(self.dir_nextgen, cname)
+                        nchild.filename = fname
+                        query = "INSERT INTO dna (id, chromosome, generation) VALUES "
+                        query += "('%s', '%s', %s)" % (cname, "".join(nchild.data), self.nextgen)
+                        cr.execute(query)
+                        conn.commit()
+                        self.children.append(nchild)
         
-        while len(self.children) > len(self.chromosomes):
-            self.children.pop()
+        if self.population != None:
+            while len(self.children) > float(self.population):
+                self.children.pop()
+        else:
+            while len(self.children) > len(self.chromosomes):
+                self.children.pop()
         
         for x in range(len(self.children)):
             if self.children[x].generation == -1:
                 self.children[x].generation = self.nextgen
-            
-            if self.children[x].filename == "":
-                fname = os.path.join(self.dir_nextgen,
-                                     "%s.xml" % str(uuid.uuid4().hex))
+                fname = self.children[x].filename
                 out = open(fname, 'w')
                 out.write(str(self.children[x]))
                 out.close()
             else:
                 shutil.copy(self.children[x].filename, self.dir_nextgen)
+        conn.commit()
+        cr.close()
+        conn.close()
         return
     
     def run(self):
@@ -287,14 +316,22 @@ class Pollinator:
             self.chromosomes.sort()
             self.breed_children()
         else:
+            conn = sqlite3.connect(os.path.join(self.dir_chromosome, "../../dna.db"))
+            cr = conn.cursor()
             for x in range(int(float(self.seed))):
                 chromo = self.build_seed(self.config["seed_size"])
                 chromo.generation = 0
-                fname = os.path.join(self.dir_nextgen,
-                                     "%s.xml" % str(uuid.uuid4().hex))
+                cfile = "%s.xml" % str(uuid.uuid4().hex)
+                fname = os.path.join(self.dir_nextgen, cfile)
                 out = open(fname, 'w')
                 out.write(str(chromo))
                 out.close()
+                query = "INSERT INTO dna (id, chromosome, generation) VALUES "
+                query += "('%s', '%s', %s)" % (cfile, "".join(chromo.data), chromo.generation)
+                cr.execute(query)
+            conn.commit()
+            cr.close()
+            conn.close()
         return
 
 
@@ -348,6 +385,9 @@ if __name__ == "__main__":
     parser.add_option("--size_limit",
                       dest="size_limit",
                       help="Put a limit on number of sensors.")
+    parser.add_option("--population",
+                      dest="population",
+                      help="Size limit of the population.")
     (options, args) = parser.parse_args()
     if None in [options.site, options.chromosome, options.directory, options.generation]:
         if options.site == None:

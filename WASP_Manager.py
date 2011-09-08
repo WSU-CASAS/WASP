@@ -58,9 +58,10 @@ class Manager:
                     self.generation -= 1
         if not found:
             self.generation = 0
+            if os.path.isdir(self.dna):
+                shutil.rmtree(self.dna)
+            os.mkdir(self.dna)
             self.generation_dir = os.path.join(self.dna, str(self.generation))
-            if os.path.isdir(self.generation_dir):
-                shutil.rmtree(self.generation_dir)
             os.mkdir(self.generation_dir)
             cmd = "%s GA_Reproduce.py " % self.pypath
             cmd += "-s %s " % os.path.join(self.directory, "site.xml")
@@ -190,6 +191,7 @@ class Manager:
         cmd += "--crossover=%s " % str(self.crossover)
         cmd += "--survival_rate=%f " % self.survival_rate
         cmd += "--reproduction_rate=%f " % self.reproduction_rate
+        cmd += "--population=%s " % str(self.population)
         if self.seed_size != None:
             cmd += "--seed_size=%s " % str(self.seed_size)
         if self.size_limit != None:

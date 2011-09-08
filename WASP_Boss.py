@@ -118,6 +118,8 @@ class Boss:
     def check_workers(self):
         for wkr in self.workerJobs.keys():
             self.xmpp.query_buddy(wkr)
+        for mgr in self.managers:
+            self.xmpp.query_buddy(mgr)
         self.xmpp.callLater(300, self.check_workers)
         return
     
