@@ -130,7 +130,7 @@ class Boss:
                 j = self.jobs.popleft()
                 self.workerJobs[w] = j
                 self.xmpp.send(str(j), w)
-        self.xmpp.callLater(5, self.send_work)
+        self.xmpp.callLater(1, self.send_work)
         return
     
     def recv_file(self, fileDom):
@@ -162,7 +162,6 @@ class Boss:
         return
     
     def message(self, msg, name):
-        print "Msg from:", name
         if name == "bthomas@node01":
             if msg == "quit-now":
                 for x in range(len(self.workers)):
@@ -175,7 +174,7 @@ class Boss:
                     self.xmpp.send("quit-generation", self.managers[x])
         dom = xml.dom.minidom.parseString(msg)
         type = dom.firstChild.nodeName
-        print "    type =",type
+        print "Msg from:", name, "    type =", type
         if type == "job":
             self.jobs.append(Job(name, msg, self.directory))
         elif type == "job_completed":

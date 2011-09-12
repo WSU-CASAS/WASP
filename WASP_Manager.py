@@ -54,6 +54,7 @@ class Manager:
             while self.generation >= 0 and not found:
                 if os.path.isdir(os.path.join(self.dna, str(self.generation))):
                     found = True
+                    self.generation_dir = os.path.join(self.dna, str(self.generation))
                 else:
                     self.generation -= 1
         if not found:
@@ -140,6 +141,8 @@ class Manager:
                 print len(msg)
                 self.xmpp.send(msg, self.boss)
                 self.running_jobs += 1
+        if self.running_jobs == 0:
+            self.xmpp.callLater(1, self.next_generation)
         return
     
     def message(self, msg, name):

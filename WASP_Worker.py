@@ -28,6 +28,9 @@ class Worker:
         self.xmpp.set_direct_msg_callback(self.message)
         self.xmpp.set_finish_callback(self.finish)
         self.waiting_on_files = 0
+        self.p = list()
+        self.emulated = list()
+        self.has_job = False
         self.job_id = None
         self.job_run_id = None
         self.job_files = None
@@ -41,7 +44,8 @@ class Worker:
     
     def has_connected(self):
         self.xmpp.subscribe_buddy(self.boss)
-        self.xmpp.send("<worker_ready />", self.boss)
+        if not self.has_job:
+            self.xmpp.send("<worker_ready />", self.boss)
         return
     
     def check_time(self):
@@ -103,6 +107,7 @@ class Worker:
         return
     
     def get_job(self, job):
+        self.has_job = True
         self.numjobs += 1
         self.waiting_on_files = 0
         self.job_id = str(job.getAttribute("id"))
@@ -137,7 +142,8 @@ class Worker:
         if self.job_chromosome == None:
             return
         
-        emulated = list()
+        self.emulated = list()
+        self.p = list()
         for df in self.job_files:
             outFile = os.path.join(self.job_directory, "%s.xml" % str(uuid.uuid4().hex))
             cmd = "%s CAMS_Emulator.py " % str(self.pypath)
@@ -150,15 +156,29 @@ class Worker:
             cmd += "--chromosome=%s " % os.path.join(self.job_directory,
                                                      self.job_chromosome)
             cmd += "--output=%s" % outFile
-            subprocess.call(str(cmd).split())
-            emulated.append(outFile)
+            self.p.append(subprocess.Popen(str(cmd).split()))
+            self.emulated.append(outFile)
+        
+        self.xmpp.callLater(1, self.wait_emulator)
+        return
+    
+    def wait_emulator(self):
+        count = 0
+        for x in range(len(self.p)):
+            if self.p[x].poll() == None:
+                count += 1
+        if count > 0:
+            self.xmpp.callLater(1, self.wait_emulator)
+            return
+        
+        self.p = list()
         
         cmd = "cp %s %s" % (os.path.join(self.directory, "ar"),
                             os.path.join(self.job_directory, "ar"))
         subprocess.call(str(cmd).split())
         
         cmd = "%s GA_Fitness.py " % str(self.pypath)
-        cmd += "--files=%s " % ",".join(emulated)
+        cmd += "--files=%s " % ",".join(self.emulated)
         cmd += "--chromosome=%s " % os.path.join(self.job_directory,
                                                  self.job_chromosome)
         cmd += "--site=%s " % os.path.join(self.directory,
@@ -166,7 +186,22 @@ class Worker:
                                            "site.xml")
         cmd += "--method=CookAr "
         cmd += "--work=%s" % str(self.job_directory)
-        subprocess.call(str(cmd).split())
+        self.p.append(subprocess.Popen(str(cmd).split()))
+        
+        self.xmpp.callLater(1, self.wait_fitness)
+        return
+    
+    def wait_fitness(self):
+        count = 0
+        for x in range(len(self.p)):
+            if self.p[x].poll() == None:
+                count += 1
+        if count > 0:
+            self.xmpp.callLater(1, self.wait_fitness)
+            return
+        
+        self.emulated = list()
+        self.p = list()
         
         msg = "<job_completed>"
         msg += "<data filename=\"%s\" >" % str(self.job_chromosome)
@@ -184,6 +219,7 @@ class Worker:
         self.job_id = None
         self.job_run_id = None
         
+        self.has_job = False
         self.xmpp.callLater(0, self.check_time)
         return
 
