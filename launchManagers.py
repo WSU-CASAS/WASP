@@ -152,6 +152,7 @@ if __name__ == "__main__":
         run.write("#!/bin/sh\n\n")
         run.write("sleep %s\n" % (x*5))
         run.write("%s\n" % cmd)
+        run.write("bash\n")
         run.close()
         subprocess.call(str("chmod +x %s" % fname).split())
         out.write("screen -t Manager%s  %s\n" % (str(num), fname))

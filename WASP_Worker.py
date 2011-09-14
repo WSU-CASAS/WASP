@@ -29,6 +29,7 @@ class Worker:
         self.xmpp.set_finish_callback(self.finish)
         self.waiting_on_files = 0
         self.p = list()
+        self.tasks = list()
         self.emulated = list()
         self.has_job = False
         self.job_id = None
@@ -49,16 +50,18 @@ class Worker:
         return
     
     def check_time(self):
-        max = datetime.timedelta(minutes=5)
+        max = datetime.timedelta(hours=6)
         life = datetime.datetime.now() - self.started
-        avgTime = life.seconds / self.numjobs
-        print "average job time in seconds: ", str(avgTime)
+        avgTime = life.seconds
+        if self.numjobs > 0:
+            avgTime = life.seconds / self.numjobs
+        #print "average job time in seconds: ", str(avgTime)
         workTime = self.started + life
         workTime += datetime.timedelta(seconds=(avgTime*3))
         maxTime = self.started + max
-        print "lifetime: ", str(life)
-        print "workTime: ", str(workTime)
-        print "maxTime:  ", str(maxTime)
+        #print "lifetime: ", str(life)
+        #print "workTime: ", str(workTime)
+        #print "maxTime:  ", str(maxTime)
         if maxTime < workTime:
             self.xmpp.callLater(0, self.respawn)
         return
@@ -144,6 +147,7 @@ class Worker:
         
         self.emulated = list()
         self.p = list()
+        self.tasks = list()
         for df in self.job_files:
             outFile = os.path.join(self.job_directory, "%s.xml" % str(uuid.uuid4().hex))
             cmd = "%s CAMS_Emulator.py " % str(self.pypath)
@@ -156,8 +160,12 @@ class Worker:
             cmd += "--chromosome=%s " % os.path.join(self.job_directory,
                                                      self.job_chromosome)
             cmd += "--output=%s" % outFile
-            self.p.append(subprocess.Popen(str(cmd).split()))
+            self.tasks.append(str(cmd))
+            #self.p.append(subprocess.Popen(str(cmd).split()))
             self.emulated.append(outFile)
+        
+        t = self.tasks.pop()
+        self.p.append(subprocess.Popen(str(t).split()))
         
         self.xmpp.callLater(1, self.wait_emulator)
         return
@@ -167,11 +175,17 @@ class Worker:
         for x in range(len(self.p)):
             if self.p[x].poll() == None:
                 count += 1
+        if count == 0:
+            if len(self.tasks) > 0:
+                count = 1
+                t = self.tasks.pop()
+                self.p[-1] = subprocess.Popen(str(t).split())
         if count > 0:
             self.xmpp.callLater(1, self.wait_emulator)
             return
         
         self.p = list()
+        self.tasks = list()
         
         cmd = "cp %s %s" % (os.path.join(self.directory, "ar"),
                             os.path.join(self.job_directory, "ar"))

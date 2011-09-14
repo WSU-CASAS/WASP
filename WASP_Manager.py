@@ -38,7 +38,7 @@ class Manager:
         self.xmpp.set_authd_callback(self.has_connected)
         self.xmpp.set_direct_msg_callback(self.message)
         self.xmpp.set_finish_callback(self.finish)
-        self.run_id = str(uuid.uuid4().hex)
+        self.run_id = "run42" #str(uuid.uuid4().hex)
         self.running_jobs = 0
         dom = xml.dom.minidom.parse(os.path.join(self.directory, "site.xml"))
         site = dom.getElementsByTagName("site")

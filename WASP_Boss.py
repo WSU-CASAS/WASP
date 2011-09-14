@@ -88,7 +88,7 @@ class Boss:
     
     def update_status(self):
         self.xmpp.set_status("%s layouts tested!" % str(self.job_count))
-        self.xmpp.callLater(60, self.update_status)
+        self.xmpp.callLater(600, self.update_status)
         return
     
     def buddy_quit(self, name):
@@ -124,13 +124,14 @@ class Boss:
         return
     
     def send_work(self):
-        for x in range(len(self.readyWorkers)):
-            if len(self.jobs) > 0:
-                w = self.readyWorkers.popleft()
-                j = self.jobs.popleft()
-                self.workerJobs[w] = j
-                self.xmpp.send(str(j), w)
-        self.xmpp.callLater(1, self.send_work)
+        if len(self.readyWorkers) > 0 and len(self.jobs) > 0:
+            w = self.readyWorkers.popleft()
+            j = self.jobs.popleft()
+            self.workerJobs[w] = j
+            self.xmpp.send(str(j), w)
+            self.xmpp.callLater(0, self.send_work)
+        else:
+            self.xmpp.callLater(1, self.send_work)
         return
     
     def recv_file(self, fileDom):
