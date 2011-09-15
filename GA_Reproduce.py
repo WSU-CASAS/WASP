@@ -109,8 +109,8 @@ class Chromosome:
         return child
     
     def __cmp__(self, other):
-        myf = self.fitness - (float(str("".join(self.data)).count("1"))/10.0)
-        otf = other.fitness - (float(str("".join(other.data)).count("1"))/10.0)
+        myf = self.fitness - (float(str("".join(self.data)).count("1"))/5.0)
+        otf = other.fitness - (float(str("".join(other.data)).count("1"))/5.0)
         val = 0
         if myf < otf:
             val = -1

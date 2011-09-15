@@ -318,10 +318,13 @@ class Emulator:
                 self.movement[i].speed = mSpeed
                 self.movement[i].annotation = mAnnotation
             else:
+                if self.movement[i].annotation == "":
+                    self.movement[i].annotation = copy.copy(mAnnotation)
+                else:
+                    mAnnotation = copy.copy(self.movement[i].annotation)
                 mx = copy.copy(self.movement[i].x)
                 my = copy.copy(self.movement[i].y)
                 mSpeed = copy.copy(self.movement[i].speed)
-                mAnnotation = copy.copy(self.movement[i].annotation)
                 if re.search('-end', mAnnotation):
                     mAnnotation = ""
         return
@@ -405,6 +408,28 @@ class Emulator:
         for m in range(len(self.movement)):
             for s in range(len(self.sensors)):
                 self.sensors[s].apply_person_event(self.movement[m])
+        
+        activeAnn = ""
+        endAnn = ""
+        for x in range(len(self.events)-1):
+            if self.events[x].annotation == activeAnn:
+                if self.events[x+1].annotation == activeAnn:
+                    self.events[x].annotation = ""
+                elif self.events[x+1].annotation == endAnn:
+                    self.events[x].annotation = ""
+                else:
+                    self.events[x].annotation = str(endAnn)
+            elif self.events[x].annotation != endAnn:
+                activeAnn = str(self.events[x].annotation)
+                endAnn = re.sub('-begin', '-end', activeAnn)
+                if self.events[x+1].annotation == "" and self.events[x].annotation != "":
+                    self.events[x].annotation = re.sub('-begin|-end', '', activeAnn)
+        
+        if self.events[-1].annotation == activeAnn:
+            self.events[-1].annotation = endAnn
+        elif self.events[-1].annotation != endAnn:
+            self.events[-1].annotation = re.sub('-begin|-end', '',
+                                                self.events[-1].annotation)
         return
     
     def output_results(self):
