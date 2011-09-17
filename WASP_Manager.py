@@ -21,6 +21,7 @@ class Manager:
         self.password = str(options.password)
         self.directory = str(options.dir)
         self.data_dir = str(options.data)
+        self.orig_dir = str(options.orig)
         self.boss = str(options.boss)
         self.pypath = str(options.pypath)
         self.generation = int(float(options.generation))
@@ -103,6 +104,7 @@ class Manager:
         self.xmpp.send(msg, self.boss)
         
         dFiles = os.listdir(self.data_dir)
+        dFiles += os.listdir(self.orig_dir)
         for dfile in dFiles:
             msg = "<send_file "
             msg += "filename=\"%s\" " % dfile
@@ -123,6 +125,7 @@ class Manager:
             chroms.append(Chromosome(os.path.join(self.generation_dir, cFile),
                                      self.max_width, self.max_height))
         data_files = os.listdir(self.data_dir)
+        orig_files = os.listdir(self.orig_dir)
         for c in chroms:
             if c.fitness == -1:
                 msg = "<job "
@@ -137,6 +140,9 @@ class Manager:
                 msg += ",".join(data_files)
                 msg += ",site.xml"
                 msg += "</data_files>"
+                msg += "<orig_files>"
+                msg += ",".join(orig_files)
+                msg += "</orig_files>"
                 msg += "</job>"
                 print len(msg)
                 self.xmpp.send(msg, self.boss)
@@ -221,6 +227,9 @@ if __name__ == "__main__":
     parser.add_option("--data",
                       dest="data",
                       help="Directory of data files.")
+    parser.add_option("--orig",
+                      dest="orig",
+                      help="Original data files for comparison.")
     parser.add_option("--boss",
                       dest="boss",
                       help="JID of Boss.",
@@ -266,7 +275,7 @@ if __name__ == "__main__":
                       dest="max_generations",
                       help="Number of generations to acheive then quit.")
     (options, args) = parser.parse_args()
-    if None in [options.jid, options.password, options.dir, options.data]:
+    if None in [options.jid, options.password, options.dir, options.data, options.orig]:
         if options.jid == None:
             print "ERROR: Missing --jid"
         if options.password == None:
@@ -275,6 +284,8 @@ if __name__ == "__main__":
             print "ERROR: Missing --dir"
         if options.data == None:
             print "ERROR: Missing --data"
+        if options.orig == None:
+            print "ERROR: Missing --orig"
         parser.print_help()
         sys.exit()
     

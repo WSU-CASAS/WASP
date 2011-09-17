@@ -1,5 +1,7 @@
 #!/usr/bin/python
 
+import copy
+import datetime
 import optparse
 import os
 import re
@@ -12,12 +14,92 @@ import xml.dom.minidom
 from GA_Reproduce import Chromosome
 
 
+def get_datetime(newVal):
+    """
+    Takes the given string in format of YYYY-MM-DD HH:MM:SS.ms and converts it
+    to a datetime.datetime() object.  The ms field is optional.
+    
+    newVal - string to convert to a datetime.datetime() object.
+    """
+    stuff = re.split('\s+', newVal)
+    date = re.split('-', stuff[0])
+    time = re.split(':', stuff[1])
+    sec = []
+    try:
+        if re.search('\.', time[2]) == None:
+            sec.append(time[2])
+            sec.append("0")
+        else:
+            sec = re.split('\.', time[2])
+    except:
+        print newVal
+        z = int("45.2")
+    dt = datetime.datetime(int(date[0]),
+                           int(date[1]),
+                           int(date[2]),
+                           int(time[0]),
+                           int(time[1]),
+                           int(sec[0]),
+                           int(sec[1]))
+    return dt
+
+
+
+class Event:
+    def __init__(self, dt, ann, orig):
+        self.dt = copy.copy(dt)
+        self.ann = copy.copy(ann)
+        self.orig = copy.copy(orig)
+        return
+    
+    def __cmp__(self, other):
+        val = 0
+        if self.dt < other.dt:
+            val = -1
+        elif self.dt > other.dt:
+            val = 1
+        elif self.orig and not other.orig:
+            val = -1
+        elif not self.orig and other.orig:
+            val = 1
+        return val
+
+
+
 class CookAr:
-    def __init__(self, options, data_file):
+    def __init__(self, options):
         self.file_chromosome = str(options.chromosome)
         self.file_site = str(options.site)
         self.working_dir = str(options.work)
-        self.file_rawdata = str(data_file)
+        self.files_rawdata = str(options.files).split(',')
+        self.files_orig = dict()
+        self.file_ranges = dict()
+        self.calc = dict()
+        for x in self.files_rawdata:
+            self.file_ranges[x] = list()
+            dom = xml.dom.minidom.parse(x)
+            data = dom.getElementsByTagName("data")
+            fname = data[0].getAttribute("filename")
+            dir = os.path.dirname(fname)
+            nName = os.path.basename(fname)
+            nName = re.sub('^m', '', nName)
+            origFile = os.path.join(dir, nName)
+            self.files_orig[x] = origFile
+            info = data[0].firstChild
+            self.file_ranges[x].append(get_datetime(info.getAttribute("timestamp")))
+            info = data[0].lastChild
+            self.file_ranges[x].append(get_datetime(info.getAttribute("timestamp")))
+            oData = open(origFile)
+            lines = oData.readlines()
+            oData.close()
+            self.file_ranges[origFile] = list()
+            stuff = str(lines[0]).split()
+            self.file_ranges[origFile].append(get_datetime("%s %s" % (stuff[0],
+                                                                      stuff[1])))
+            stuff = str(lines[-1]).split()
+            self.file_ranges[origFile].append(get_datetime("%s %s" % (stuff[0],
+                                                                      stuff[1])))
+        
         dom = xml.dom.minidom.parse(self.file_site)
         site = dom.getElementsByTagName("site")
         self.max_width = int(float(site[0].getAttribute("max_width")))
@@ -29,29 +111,31 @@ class CookAr:
         self.file_config = os.path.join(self.working_dir, "%s.config" % str(name))
         self.file_data = os.path.join(self.working_dir, "%s.data" % str(name))
         self.fitness = -1
+        self.events = list()
         return
     
     def write_data(self):
         out = open(self.file_data, 'w')
-        dom = xml.dom.minidom.parse(self.file_rawdata)
-        data = dom.getElementsByTagName("data")
-        children = data[0].childNodes
-        for event in children:
-            dt = event.getAttribute("timestamp")
-            serial = event.getAttribute("serial")
-            message = event.getAttribute("message")
-            annotation = event.getAttribute("annotation")
-            stuff = str(annotation).split(",")
-            ann = ""
-            for line in stuff:
-                if str(line).find("-start") or str(line).find("-end"):
-                    ann = line
-                    ann = re.sub('-', ' ', ann)
-                    ann = re.sub("start", "begin", ann)
-            if ann != "":
-                if str(ann).split()[0] not in self.annotations:
-                    self.annotations.append(str(ann).split()[0])
-            out.write("%s\t%s\t%s\t%s\n" % (dt, serial, message, ann))
+        for fname in self.files_rawdata:
+            dom = xml.dom.minidom.parse(fname)
+            data = dom.getElementsByTagName("data")
+            children = data[0].childNodes
+            for event in children:
+                dt = event.getAttribute("timestamp")
+                serial = event.getAttribute("serial")
+                message = event.getAttribute("message")
+                annotation = event.getAttribute("annotation")
+                stuff = str(annotation).split(",")
+                ann = ""
+                for line in stuff:
+                    if str(line).find("-begin") or str(line).find("-end"):
+                        ann = re.sub('-', ' ', line)
+                    else:
+                        ann = str(line)
+                if ann != "":
+                    if str(ann).split()[0] not in self.annotations:
+                        self.annotations.append(str(ann).split()[0])
+                out.write("%s\t%s\t%s\t%s\n" % (dt, serial, message, ann))
         out.close()
         return
     
@@ -90,18 +174,103 @@ class CookAr:
         self.write_data()
         self.write_config()
         p = subprocess.Popen([os.path.join(self.working_dir, "ar"),
-                              self.file_data, self.file_config],
+                              self.file_data, self.file_config, "-stream"],
                              stdout=subprocess.PIPE)
         
         while p.poll() == None:
+            data = p.stdout.readlines()
+            for x in data:
+                stuff = str(str(x).strip()).split()
+                dt = get_datetime("%s %s" % (stuff[0], stuff[1]))
+                self.events.append(Event(dt, stuff[2], False))
             time.sleep(1)
-        data = p.stdout.readlines()
-        for line in data:
-            accObj = re.search(".*Average accuracy is (0\.\d+)", line)
-            if accObj != None:
-                print accObj.group(1)
-                self.fitness = float(accObj.group(1)) * 100.0
-        self.fitness += 10.0 * float(len(self.annotations))
+        
+        for fname in self.files_orig.keys():
+            data = open(self.files_orig[fname])
+            info = data.readlines()
+            data.close()
+            activeAnn = "Other"
+            nextOther = False
+            for line in info:
+                stuff = str(str(line).strip()).split()
+                dt = get_datetime("%s %s" % (stuff[0], stuff[1]))
+                if nextOther:
+                    activeAnn = "Other"
+                    nextOther = False
+                
+                if len(stuff) > 4:
+                    if re.search('-begin', stuff[4]):
+                        activeAnn = re.sub('-begin', '', stuff[4])
+                    elif re.search('-end', stuff[4]):
+                        nextOther = True
+                ann = str(activeAnn)
+                self.events.append(Event(dt, ann, True))
+        
+        self.events.sort()
+        hourTD = datetime.timedelta(hours=1)
+        blocks = list()
+        blocks.append(list())
+        chunk = 0
+        
+        for x in range(len(self.events) - 1):
+            blocks[chunk].append(self.events[x])
+            diff = abs(self.events[x].dt - self.events[x+1].dt)
+            if diff > hourTD:
+                chunk += 1
+                blocks.append(list())
+        blocks[chunk].append(self.events[-1])
+        
+        for x in self.annotations:
+            self.calc[x] = {'TP':0, 'FP':0, 'TN':0, 'FN':0}
+        
+        totalTicks = 0
+        for x in range(len(blocks)):
+            step = blocks[x][0].dt
+            stepper = datetime.timedelta(seconds=0.01)
+            t = 0
+            activeAnn = "Other"
+            while t < len(blocks[x]):
+                totalTicks += 1
+                if blocks[x][t].orig:
+                    activeAnn = blocks[x][t].ann
+                elif blocks[x][t].ann == activeAnn:
+                    self.calc[blocks[x][t].ann]['TP'] += 1
+                else:
+                    self.calc[blocks[x][t].ann]['FP'] += 1
+                    self.calc[activeAnn]['FN'] += 1
+                
+                if t+1 < len(blocks[x]):
+                    if blocks[x][t+1].dt < (step + stepper):
+                        t += 1
+                    else:
+                        step += stepper
+                else:
+                    t += 1
+        
+        for x in self.annotations:
+            self.calc[x]['TN'] = totalTicks - self.calc[x]['TP'] - self.calc[x]['FP'] - self.calc[x]['FN']
+        testing = 0
+        for x in range(len(self.events)):
+            if not self.events[x].orig:
+                testing += 1
+        
+        avgAcc = 0.0
+        for x in self.annotations:
+            xPos = float(self.calc[x]['TP'] + self.calc[x]['FN'])
+            xNeg = float(self.calc[x]['FP'] + self.calc[x]['TN'])
+            tpr = float(self.calc[x]['TP']) / float(xPos)
+            fpr = float(self.calc[x]['FP']) / float(xNeg)
+            acc = (tpr - fpr) * 100.0
+            if x != "Other":
+                avgAcc += acc
+            msg = "%10s  TP =%5d  FP =%5d" % (x, self.calc[x]['TP'], self.calc[x]['FP'])
+            msg += "  TN =%5d  FN =%5d" % (self.calc[x]['TN'], self.calc[x]['FN'])
+            msg += "\ttpr=%f  fpr=%f" % (tpr*100.0, fpr*100.0)
+            msg += "    acc=%f" % (acc)
+            #msg += "\t p=%f  f=%f" % (xPos, xNeg)
+            #print msg
+        self.fitness = avgAcc/(len(self.annotations)-1)
+        #self.fitness += 2.0 * float(len(self.annotations))
         return
 
 
@@ -144,15 +313,10 @@ if __name__ == "__main__":
         sys.exit()
     
     if str(options.method) == "CookAr":
-        values = list()
-        files = str(options.files).split(",")
-        for dfile in files:
-            myobj = CookAr(options, dfile)
-            myobj.run()
-            if myobj.fitness != -1:
-                values.append(myobj.fitness)
+        myobj = CookAr(options)
+        myobj.run()
         
-        fitness = float(sum(values)) / float(len(values))
+        fitness = myobj.fitness
         print "Fitness =",fitness
         dom = xml.dom.minidom.parse(options.site)
         site = dom.getElementsByTagName("site")

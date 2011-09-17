@@ -35,6 +35,7 @@ class Worker:
         self.job_id = None
         self.job_run_id = None
         self.job_files = None
+        self.job_origs = None
         self.job_directory = None
         self.job_chromosome = None
         return
@@ -126,8 +127,10 @@ class Worker:
         out.close()
         data = None
         dfDom = job.getElementsByTagName("data_files")
+        ofDom = job.getElementsByTagName("orig_files")
         self.job_files = str(dfDom[0].firstChild.toxml()).split(",")
-        for jf in self.job_files:
+        self.job_origs = str(ofDom[0].firstChild.toxml()).split(",")
+        for jf in (self.job_files + self.job_origs):
             absName = os.path.join(self.directory, self.job_run_id, jf)
             if not os.path.isfile(absName):
                 self.request_file(jf, self.job_run_id)

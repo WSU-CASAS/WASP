@@ -28,7 +28,7 @@ if __name__ == "__main__":
                       help="Directory for Manager working dirs.")
     parser.add_option("--sitedata",
                       dest="sitedata",
-                      help="List of site config files and data directories. site.xml:/data/dir,site.xml:/data/dir")
+                      help="List of site config files and data directories. site.xml:/data/dir:/orig/dir,site.xml:/data/dir:/orig/dir")
     parser.add_option("--population",
                       dest="population",
                       help="List of population sizes.",
@@ -125,6 +125,9 @@ if __name__ == "__main__":
         if not os.path.isdir(sd[1]):
             print "ERROR: '%s' in not a valid directory!" % str(sd[1])
             sys.exit()
+        if not os.path.isdir(sd[2]):
+            print "ERROR: '%s' in not a valid directory!" % str(sd[2])
+            sys.exit()
         shutil.copy(sd[0], os.path.join(wkDir, "site.xml"))
         
         cmd = str(options.pypath)
@@ -133,6 +136,7 @@ if __name__ == "__main__":
         cmd += "--password=WASPmanager%s " % str(num)
         cmd += "--dir=%s " % str(wkDir)
         cmd += "--data=%s " % str(os.path.abspath(sd[1]))
+        cmd += "--orig=%s " % str(os.path.abspath(sd[2]))
         cmd += "--boss=%s " % str(options.boss)
         cmd += "--pypath=%s " % str(options.pypath)
         cmd += "--population=%s " % str(config[x]["population"])

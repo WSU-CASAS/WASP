@@ -14,39 +14,17 @@ import xml.dom.minidom
 
 
 class Job:
-    def __init__(self, manager, message, directory):
+    def __init__(self, manager, message):
         self.manager = manager
-        self.runId = None
-        self.chromosome = None
-        self.jobId = None
-        self.data_files = None
-        dom = xml.dom.minidom.parseString(message)
-        job = dom.getElementsByTagName("job")
-        self.jobId = str(job[0].getAttribute("id"))
-        self.runId = str(job[0].getAttribute("run_id"))
-        chrom = dom.getElementsByTagName("chromosome_file")
-        self.chromosome = str(chrom[0].toxml())
-        df = dom.getElementsByTagName("data_files")
-        self.data_files = str(df[0].toxml())
+        self.message = str(message)
         return
     
     def completed(self):
-        self.jobId = None
-        self.chromosome = None
-        self.runId = None
-        self.data_files = None
+        self.message = None
         return
     
     def __str__(self):
-        job = "<job "
-        job += "id=\"%s\" " % str(self.jobId)
-        job += "run_id=\"%s\" " % str(self.runId)
-        job += "manager=\"%s\" " % str(self.manager)
-        job += ">"
-        job += str(self.chromosome)
-        job += str(self.data_files)
-        job += "</job>"
-        return job
+        return self.message
 
 
 
@@ -177,7 +155,7 @@ class Boss:
         type = dom.firstChild.nodeName
         print "Msg from:", name, "    type =", type
         if type == "job":
-            self.jobs.append(Job(name, msg, self.directory))
+            self.jobs.append(Job(name, msg))
         elif type == "job_completed":
             self.job_count += 1
             if name in self.workerJobs:

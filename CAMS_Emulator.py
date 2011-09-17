@@ -424,17 +424,45 @@ class Emulator:
                 endAnn = re.sub('-begin', '-end', activeAnn)
                 if self.events[x+1].annotation == "" and self.events[x].annotation != "":
                     self.events[x].annotation = re.sub('-begin|-end', '', activeAnn)
+            elif self.events[x+1].annotation == endAnn:
+                self.events[x].annotation = ""
         
         if self.events[-1].annotation == activeAnn:
             self.events[-1].annotation = endAnn
         elif self.events[-1].annotation != endAnn:
             self.events[-1].annotation = re.sub('-begin|-end', '',
                                                 self.events[-1].annotation)
+        
+        activeAnn = ""
+        for x in range(len(self.events)-1):
+            if self.events[x].annotation == "":
+                if activeAnn == "":
+                    if self.events[x+1].annotation == "":
+                        self.events[x].annotation = "Other-begin"
+                        activeAnn = "Other-begin"
+                    else:
+                        self.events[x].annotation = "Other"
+                elif activeAnn == "Other-begin":
+                    if self.events[x+1].annotation != "":
+                        self.events[x].annotation = "Other-end"
+            else:
+                if re.search('-begin', self.events[x].annotation):
+                    activeAnn = self.events[x].annotation
+                elif re.search('-end', self.events[x].annotation):
+                    activeAnn = ""
+        
+        if self.events[-1].annotation == "":
+            if activeAnn == "":
+                self.events[-1].annotation = "Other"
+            elif activeAnn == "Other-begin":
+                self.events[-1].annotation = "Other-end"
+                
         return
     
     def output_results(self):
         outFile = open(self.file_output, 'w')
-        outFile.write("<data>")
+        outFile.write("<data ")
+        outFile.write("filename=\"%s\" >" % self.file_movement)
         for r in self.events:
             outFile.write("%s" % str(r))
         outFile.write("</data>")
