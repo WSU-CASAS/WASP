@@ -104,7 +104,7 @@ class Manager:
         self.xmpp.send(msg, self.boss)
         
         dFiles = os.listdir(self.data_dir)
-        dFiles += os.listdir(self.orig_dir)
+        oFiles = os.listdir(self.orig_dir)
         for dfile in dFiles:
             msg = "<send_file "
             msg += "filename=\"%s\" " % dfile
@@ -114,7 +114,18 @@ class Manager:
             msg += "".join(info)
             data.close()
             msg += "</send_file>"
-            self.xmpp.send(msg, self.boss)
+            #self.xmpp.send(msg, self.boss)
+        
+        for dfile in oFiles:
+            msg = "<send_file "
+            msg += "filename=\"%s\" " % dfile
+            msg += "run_id=\"%s\" >" % self.run_id
+            data = open(os.path.join(self.orig_dir, dfile))
+            info = data.readlines()
+            msg += "".join(info)
+            data.close()
+            msg += "</send_file>"
+            #self.xmpp.send(msg, self.boss)
         self.xmpp.callLater(1, self.do_work)
         return
     

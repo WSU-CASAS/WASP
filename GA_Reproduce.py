@@ -22,12 +22,15 @@ class Chromosome:
         self.height = int(float(height))
         self.config = config
         self.filename = filename
+        self.info = ""
         if filename != "":
             dom = xml.dom.minidom.parse(filename)
             chromo = dom.getElementsByTagName("chromosome")
             self.data = list(str(chromo[0].getAttribute("data")).strip())
             self.fitness = float(chromo[0].getAttribute("fitness"))
             self.generation = int(float(chromo[0].getAttribute("generation")))
+            if chromo[0].hasAttribute("info"):
+                self.info = str(chromo[0].getAttribute("info"))
         else:
             self.data = list()
             for x in range(self.width * self.height):
@@ -109,8 +112,8 @@ class Chromosome:
         return child
     
     def __cmp__(self, other):
-        myf = self.fitness - (float(str("".join(self.data)).count("1"))/5.0)
-        otf = other.fitness - (float(str("".join(other.data)).count("1"))/5.0)
+        myf = self.fitness - (float(str("".join(self.data)).count("1"))/10.0)
+        otf = other.fitness - (float(str("".join(other.data)).count("1"))/10.0)
         val = 0
         if myf < otf:
             val = -1
@@ -130,6 +133,7 @@ class Chromosome:
         mystr += "data=\"%s\" " % str("".join(self.data))
         mystr += "fitness=\"%s\" " % str(self.fitness)
         mystr += "generation=\"%s\" " % str(self.generation)
+        mystr += "info=\"%s\" " % str(self.info)
         mystr += "/>"
         return mystr
 

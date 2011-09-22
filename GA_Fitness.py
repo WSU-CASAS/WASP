@@ -230,6 +230,8 @@ class CookAr:
             t = 0
             activeAnn = "Other"
             while t < len(blocks[x]):
+                if activeAnn not in self.calc:
+                    self.calc[activeAnn] = {'TP':0, 'FP':0, 'TN':0, 'FN':0}
                 totalTicks += 1
                 if blocks[x][t].orig:
                     activeAnn = blocks[x][t].ann
@@ -258,8 +260,12 @@ class CookAr:
         for x in self.annotations:
             xPos = float(self.calc[x]['TP'] + self.calc[x]['FN'])
             xNeg = float(self.calc[x]['FP'] + self.calc[x]['TN'])
-            tpr = float(self.calc[x]['TP']) / float(xPos)
-            fpr = float(self.calc[x]['FP']) / float(xNeg)
+            tpr = 0.0
+            if xPos > 0:
+                tpr = float(self.calc[x]['TP']) / float(xPos)
+            fpr = 0.0
+            if xNeg > 0:
+                fpr = float(self.calc[x]['FP']) / float(xNeg)
             acc = (tpr - fpr) * 100.0
             if x != "Other":
                 avgAcc += acc
@@ -318,12 +324,20 @@ if __name__ == "__main__":
         
         fitness = myobj.fitness
         print "Fitness =",fitness
+        msg = ""
+        for x in myobj.calc.keys():
+            msg += "%s:" % str(x)
+            msg += "%d:" % myobj.calc[x]['TP']
+            msg += "%d:" % myobj.calc[x]['FP']
+            msg += "%d:" % myobj.calc[x]['TN']
+            msg += "%d," % myobj.calc[x]['FN']
         dom = xml.dom.minidom.parse(options.site)
         site = dom.getElementsByTagName("site")
         max_width = int(float(site[0].getAttribute("max_width")))
         max_height = int(float(site[0].getAttribute("max_height")))
         chrom = Chromosome(options.chromosome, max_width, max_height)
         chrom.fitness = fitness
+        chrom.info = msg
         out = open(chrom.filename, 'w')
         out.write(str(chrom))
         out.close()

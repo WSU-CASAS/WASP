@@ -154,7 +154,7 @@ if __name__ == "__main__":
         fname = os.path.join(wkDir, "run.sh")
         run = open(fname, 'w')
         run.write("#!/bin/sh\n\n")
-        run.write("sleep %s\n" % (x*5))
+        run.write("sleep %s\n" % (x*20))
         run.write("%s\n" % cmd)
         run.write("bash\n")
         run.close()

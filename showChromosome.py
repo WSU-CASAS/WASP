@@ -1,10 +1,16 @@
 #!/usr/bin/python
 
+import matplotlib
+matplotlib.use('Agg')
+import pylab
+import matplotlib.cm as cm
+import matplotlib.pyplot as plt
 import ConfigParser
 import copy
 import datetime
 import math
 import optparse
+import os
 import pprint
 import re
 import sys
@@ -41,65 +47,6 @@ def get_datetime(newVal):
                            int(sec[1]))
     return dt
 
-
-def compare_events(one, two):
-    if one.dt <= two.dt:
-        if one.dt == two.dt:
-            return 0
-        else:
-            return -1
-    return 1
-
-
-###############################################################################
-#### PersonEvent class
-###############################################################################
-class PersonEvent:
-    def __init__(self, line):
-        stuff = re.split('\s+', str(line).strip())
-        date = str(stuff[0]).strip()
-        time = str(stuff[1]).strip()
-        self.dt = get_datetime("%s %s" % (date, time))
-        self.res = str(stuff[2]).strip()
-        self.x = str(stuff[3]).strip()
-        self.y = str(stuff[4]).strip()
-        self.speed = float(str(stuff[5]).strip())
-        self.annotation = ""
-        if len(stuff) > 6:
-            self.annotation = str(stuff[6]).strip()
-        return
-    
-    def __str__(self):
-        mystr = "%s\t%s\t%s\t%s\t%s\t%s" % (str(self.dt), self.res, self.x,
-                                            self.y, self.speed, self.annotation)
-        return mystr
-
-
-###############################################################################
-#### Event class
-###############################################################################
-class Event:
-    def __init__(self, dt, serial, message, pevent):
-        self.dt = dt
-        self.serial = serial
-        self.message = message
-        self.px = copy.copy(pevent.x)
-        self.py = copy.copy(pevent.y)
-        self.speed = copy.copy(pevent.speed)
-        self.annotation = copy.copy(pevent.annotation)
-        return
-    
-    def __str__(self):
-        mystr = "<event "
-        mystr += "timestamp=\"%s\" " % str(self.dt)
-        mystr += "serial=\"%s\" " % str(self.serial)
-        mystr += "message=\"%s\" " % str(self.message)
-        mystr += "x=\"%s\" " % str(self.px)
-        mystr += "y=\"%s\" " % str(self.py)
-        mystr += "speed=\"%s\" " % str(self.speed)
-        mystr += "annotation=\"%s\" " % str(self.annotation)
-        mystr += "/>"
-        return mystr
 
 
 ###############################################################################
@@ -190,12 +137,13 @@ class MotionSensor(Sensor):
 
 
 ###############################################################################
-#### Emulator class
+#### ChromViewer class
 ###############################################################################
-class Emulator:
-    def __init__(self, options):
+class ChromViewer:
+    def __init__(self, options, cDir):
         self.file_site = str(options.site)
-        self.file_chromosome = str(options.chromosome)
+        self.dir_chromosome = cDir
+        self.dir_out = str(options.directory)
         self.max_width = 0
         self.max_height = 0
         self.space = None
@@ -203,6 +151,7 @@ class Emulator:
         self.sensors = None
         self.sensor_view = None
         self.sensor_map = None
+        self.map_weight = None
         return
     
     def load_site(self):
@@ -277,10 +226,15 @@ class Emulator:
                     self.areas[-1].add_area(x, y, width, height,
                                             self.max_width, self.max_height)
         #self.print_obj(self.space)
+        self.map_weight = list()
+        for x in range(self.max_width):
+            self.map_weight.append(list())
+            for y in range(self.max_height):
+                self.map_weight[x].append(0)
         return
     
-    def load_chromosome(self):
-        dom = xml.dom.minidom.parse(self.file_chromosome)
+    def load_chromosome(self, chrom_file):
+        dom = xml.dom.minidom.parse(chrom_file)
         chromo = dom.getElementsByTagName("chromosome")
         cData = str(chromo[0].getAttribute("data"))
         senId = 0
@@ -299,18 +253,17 @@ class Emulator:
             for y in range(self.max_height):
                 if cData[x + (y*self.max_width)] == '1':
                     self.sensors.append(MotionSensor(senId, x, y))
-                    self.space[x][y] = str(senId)
-                    self.sensor_view[x][y].append(str(senId))
+                    #self.space[x][y] = str(senId)
+                    #self.sensor_view[x][y].append(str(senId))
                     self.sensor_map[x][y] = str(senId)
-                    self.spread_sensor(senId, x, y)
+                    self.map_weight[x][y] += 1
+                    #self.spread_sensor(senId, x, y)
                     senId += 1
         
-        for x in range(len(self.sensors)):
-            self.sensors[x].set_event_func(self.add_sensor_event)
+        #for x in range(len(self.sensors)):
+        #    self.sensors[x].set_event_func(self.add_sensor_event)
         
-        self.print_obj(self.sensor_map)
-        #self.print_obj(self.space)
-        #self.print_view()
+        #self.print_obj(self.sensor_map)
         return
     
     def spread_sensor(self, id, sX, sY, radius=7):
@@ -357,14 +310,40 @@ class Emulator:
                 out += "%4s" % tmp
             print out
     
-    def run(self):
+    def run(self, outFile=None):
         self.load_site()
-        self.load_chromosome()
+        files = os.listdir(self.dir_chromosome)
+        for f in files:
+            fname = os.path.join(self.dir_chromosome, f)
+            self.load_chromosome(fname)
+        #self.print_obj(self.map_weight)
+        fig = plt.figure(figsize=(5,7), dpi=128)
+        fig.text(0.05, 0.95, str(outFile).split('.')[0], horizontalalignment='left', verticalalignment='top')
+        colors = cm.jet(pylab.linspace(0, 1, len(files)))
+        for x in range(self.max_width):
+            for y in range(self.max_height):
+                if self.map_weight[x][y] > 0:
+                    plt.plot(x + 1, self.max_height - y, 'o',
+                             alpha=float(self.map_weight[x][y] + len(files)/3)/float(len(files) * 1.33),
+                             color=colors[self.map_weight[x][y] - 1])
+                if self.space[x][y] != ' ':
+                    plt.plot(x + 1, self.max_height - y, 's',
+                             color='black')
+        plt.subplots_adjust(left=0.0, bottom=0.0, right=1.0, top=1.0)
+        plt.savefig(os.path.join(self.dir_out, outFile))
+        #plt.show()
+        plt.close('all')
+        
+        self.map_weight = None
+        self.areas = None
+        self.sensor_map = None
+        self.sensor_view = None
+        self.space = None
         return
 
 
 if __name__ == "__main__":
-    print "CAMS Emulator"
+    print "Chromosome Viewer"
     parser = optparse.OptionParser(usage="usage: %prog [options]")
     parser.add_option("-s",
                       "--site",
@@ -374,14 +353,24 @@ if __name__ == "__main__":
                       "--chromosome",
                       dest="chromosome",
                       help="File with the sensor chromosome definition.")
+    parser.add_option("-d",
+                      "--directory",
+                      dest="directory",
+                      help="Directory to output chromosome pictures.")
     (options, args) = parser.parse_args()
-    if None in [options.site, options.chromosome]:
+    if None in [options.site, options.chromosome, options.directory]:
         if options.site == None:
             print "ERROR: Missing -s / --site"
         if options.chromosome == None:
             print "ERROR: Missing -c / --chromosome"
         parser.print_help()
         sys.exit()
-    cams_em = Emulator(options)
-    cams_em.run()
+    gen = 0
+    while os.path.isdir(os.path.join(options.chromosome, str(gen))):
+        print options.chromosome,gen
+        cams_em = ChromViewer(options, os.path.join(options.chromosome, str(gen)))
+        cams_em.run("%s.png" % str(gen))
+        cams_em = None
+        gen += 1
+    
 

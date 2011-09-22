@@ -3,6 +3,7 @@ import os
 import shutil
 import subprocess
 import sys
+import time
 
 
 tmp_dir = "work"
@@ -55,7 +56,7 @@ if __name__ == "__main__":
         
         fname = os.path.join(wkrDir, "run.pbs")
         out = open(fname, 'w')
-        out.write("#PBS -l nodes=1:ppn=1,walltime=24:00:00\n")
+        out.write("#PBS -l nodes=1:ppn=1,mem=150M,walltime=7:00:00\n")
         out.write("#PBS -N wkr%s\n" % str(num))
         out.write("cd ~/wasp\n")
         out.write("sleep 20\n")
@@ -69,4 +70,5 @@ if __name__ == "__main__":
         out.close()
         
         subprocess.call(str("qsub %s" % fname).split())
+        time.sleep(5)
 

@@ -22,6 +22,9 @@ class Worker:
         self.password = str(options.password)
         self.boss = str(options.boss)
         self.directory = str(options.dir)
+        self.tmp_dir = os.path.join("/tmp", self.username)
+        if not os.path.isdir(self.tmp_dir):
+            os.mkdir(self.tmp_dir)
         self.pypath = str(options.pypath)
         self.xmpp = xmpp.Connection(self.name)
         self.xmpp.set_authd_callback(self.has_connected)
@@ -38,6 +41,7 @@ class Worker:
         self.job_origs = None
         self.job_directory = None
         self.job_chromosome = None
+        self.valid_files = list()
         return
     
     def connect(self):
@@ -116,7 +120,7 @@ class Worker:
         self.waiting_on_files = 0
         self.job_id = str(job.getAttribute("id"))
         self.job_run_id = str(job.getAttribute("run_id"))
-        self.job_directory = os.path.join(self.directory, self.job_id)
+        self.job_directory = os.path.join(self.tmp_dir, self.job_id)
         if not os.path.isdir(self.job_directory):
             os.mkdir(self.job_directory)
         crfDom = job.getElementsByTagName("chromosome_file")
@@ -132,9 +136,12 @@ class Worker:
         self.job_origs = str(ofDom[0].firstChild.toxml()).split(",")
         for jf in (self.job_files + self.job_origs):
             absName = os.path.join(self.directory, self.job_run_id, jf)
-            if not os.path.isfile(absName):
-                self.request_file(jf, self.job_run_id)
-                self.waiting_on_files += 1
+            if absName not in self.valid_files:
+                if not os.path.isfile(absName):
+                    self.request_file(jf, self.job_run_id)
+                    self.waiting_on_files += 1
+                else:
+                    self.valid_files.append(absName)
         if "site.xml" in self.job_files:
             self.job_files.remove("site.xml")
         self.xmpp.callLater(1, self.do_job)
