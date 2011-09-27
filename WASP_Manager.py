@@ -188,6 +188,21 @@ class Manager:
         return
     
     def next_generation(self):
+        chroms = list()
+        found = 0
+        cFiles = os.listdir(self.generation_dir)
+        for cFile in cFiles:
+            chroms.append(Chromosome(os.path.join(self.generation_dir, cFile),
+                                     self.max_width, self.max_height))
+        data_files = os.listdir(self.data_dir)
+        orig_files = os.listdir(self.orig_dir)
+        for c in chroms:
+            if c.fitness == -1:
+                found += 1
+        if found > 0:
+            self.xmpp.callLater(1, self.do_work)
+            return
+
         if self.quit_on_generation:
             self.xmpp.callLater(0, self.finish)
             return
@@ -219,6 +234,7 @@ class Manager:
         cmd = str(cmd).strip()
         print cmd
         subprocess.call(str(cmd).split())
+        self.running_jobs = 0
         self.xmpp.callLater(1, self.do_work)
         return
 

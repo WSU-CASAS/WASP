@@ -152,6 +152,7 @@ class ChromViewer:
         self.sensor_view = None
         self.sensor_map = None
         self.map_weight = None
+        self.regen_pics = options.regen_all
         return
     
     def load_site(self):
@@ -311,6 +312,9 @@ class ChromViewer:
             print out
     
     def run(self, outFile=None):
+        if not self.regen_pics:
+            if os.path.isfile(os.path.join(self.dir_out, outFile)):
+                return
         self.load_site()
         files = os.listdir(self.dir_chromosome)
         for f in files:
@@ -357,12 +361,20 @@ if __name__ == "__main__":
                       "--directory",
                       dest="directory",
                       help="Directory to output chromosome pictures.")
+    parser.add_option("-r",
+                      "--regen_all",
+                      dest="regen_all",
+                      action="store_true",
+                      help="Force regeneration of all images.",
+                      default=False)
     (options, args) = parser.parse_args()
     if None in [options.site, options.chromosome, options.directory]:
         if options.site == None:
             print "ERROR: Missing -s / --site"
         if options.chromosome == None:
             print "ERROR: Missing -c / --chromosome"
+        if options.directory == None:
+            print "ERROR: Missing -d / --directory"
         parser.print_help()
         sys.exit()
     gen = 0
