@@ -71,10 +71,10 @@ class Boss:
     
     def buddy_quit(self, name):
         print "buddy_quit( %s )" % str(name)
-        print "workers: ", self.workers
-        print "readyWorkers: ", self.readyWorkers
-        print "workerJobs: ", self.workerJobs
-        print "len(jobs): ", len(self.jobs)
+        print "workers:      ", len(self.workers)
+        print "readyWorkers: ", len(self.readyWorkers)
+        print "workerJobs:   ", len(self.workerJobs)
+        print "len(jobs):    ", len(self.jobs)
         if name in self.workers:
             self.workers.remove(name)
         if name in self.workerJobs:
@@ -179,6 +179,12 @@ class Boss:
             self.recv_file(dom.firstChild)
         elif type == "request_file":
             self.request_file(dom.firstChild, name)
+        elif type == "info":
+            message = "managers: %s\n" % str(len(self.managers))
+            message += "workers: %s\n" % str(len(self.workers))
+            message += "ready workers: %s\n" % str(len(self.readyWorkers))
+            message += "jobs: %s" % str(len(self.jobs))
+            self.xmpp.send(message, name)
         elif type == "request_info":
             message = "managers"
             message += "\n    ".join(self.managers)

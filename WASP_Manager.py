@@ -5,6 +5,7 @@ import os
 import random
 import re
 import shutil
+import sqlite3
 import subprocess
 import sys
 import uuid
@@ -25,7 +26,6 @@ class Manager:
         self.boss = str(options.boss)
         self.pypath = str(options.pypath)
         self.generation = int(float(options.generation))
-        self.generation_dir = None
         self.population = int(float(options.population))
         self.mutation_rate = float(options.mutation_rate)
         self.crossover = int(float(options.crossover))
@@ -46,29 +46,26 @@ class Manager:
         self.max_width = int(float(site[0].getAttribute("max_width")))
         self.max_height = int(float(site[0].getAttribute("max_height")))
         
-        self.dna = os.path.join(self.directory, "dna")
-        if not os.path.isdir(self.dna):
-            os.mkdir(self.dna)
+        self.dna = os.path.join(self.directory, "dna.db")
         
         found = False
         if self.generation > 0:
-            while self.generation >= 0 and not found:
-                if os.path.isdir(os.path.join(self.dna, str(self.generation))):
-                    found = True
-                    self.generation_dir = os.path.join(self.dna, str(self.generation))
-                else:
-                    self.generation -= 1
+            conn = sqlite3.connect(self.dna)
+            cr = conn.cursor()
+            query = "SELECT g.gen FROM generations g INNER JOIN chrom_gens cg "
+            query += "ON g.gid=cg.gid ORDER BY gen DESC LIMIT 1"
+            cr.execute(query)
+            r = cr.fetchone()
+            if r != None:
+                found = True
+                self.generation = int(float(r[0]))
+            cr.close()
+            conn.close()
         if not found:
             self.generation = 0
-            if os.path.isdir(self.dna):
-                shutil.rmtree(self.dna)
-            os.mkdir(self.dna)
-            self.generation_dir = os.path.join(self.dna, str(self.generation))
-            os.mkdir(self.generation_dir)
             cmd = "%s GA_Reproduce.py " % self.pypath
             cmd += "-s %s " % os.path.join(self.directory, "site.xml")
-            cmd += "-c %s " % self.generation_dir
-            cmd += "-d %s " % self.generation_dir
+            cmd += "-c %s " % self.dna
             cmd += "-r %f " % random.random()
             cmd += "-g %s " % str(self.generation)
             cmd += "--seed=%s " % str(self.population)
@@ -77,6 +74,7 @@ class Manager:
             if self.size_limit != None:
                 cmd += "--size_limit=%s " % str(self.size_limit)
             cmd = str(cmd).strip()
+            print cmd
             subprocess.call(str(cmd).split())
         return
     
@@ -131,33 +129,46 @@ class Manager:
     
     def do_work(self):
         chroms = list()
-        cFiles = os.listdir(self.generation_dir)
-        for cFile in cFiles:
-            chroms.append(Chromosome(os.path.join(self.generation_dir, cFile),
-                                     self.max_width, self.max_height))
         data_files = os.listdir(self.data_dir)
         orig_files = os.listdir(self.orig_dir)
-        for c in chroms:
-            if c.fitness == -1:
-                msg = "<job "
-                msg += "manager=\"%s\" " % str(self.username)
-                msg += "run_id=\"%s\" " % self.run_id
-                msg += "id=\"%s\" >" % str(uuid.uuid4().hex)
-                msg += "<chromosome_file "
-                msg += "filename=\"%s\" >" % os.path.basename(str(c.filename))
-                msg += str(c)
-                msg += "</chromosome_file>"
-                msg += "<data_files>"
-                msg += ",".join(data_files)
-                msg += ",site.xml"
-                msg += "</data_files>"
-                msg += "<orig_files>"
-                msg += ",".join(orig_files)
-                msg += "</orig_files>"
-                msg += "</job>"
-                print len(msg)
-                self.xmpp.send(msg, self.boss)
-                self.running_jobs += 1
+        
+        conn = sqlite3.connect(self.dna)
+        cr = conn.cursor()
+        query = "SELECT c.genome, c.uuid "
+        query += "FROM (chromosome c INNER JOIN chrom_gens cg ON c.cid=cg.cid) "
+        query += "INNER JOIN generations g ON cg.gid=g.gid "
+        query += "WHERE c.accuracy=-1 AND g.gen=%s" % str(self.generation)
+        cr.execute(query)
+        row = cr.fetchone()
+        while row != None:
+            chroms.append((str(row[0]).strip(),str(row[1]).strip()))
+            row = cr.fetchone()
+        cr.close()
+        conn.close()
+        print "sending jobs:",len(chroms)
+        for (c,u) in chroms:
+            msg = "<job "
+            msg += "manager=\"%s\" " % str(self.username)
+            msg += "run_id=\"%s\" " % self.run_id
+            msg += "id=\"%s\" >" % str(u)
+            msg += "<chromosome_file "
+            msg += "filename=\"%s.xml\" >" % str(u)
+            msg += "<chromosome "
+            msg += "data=\"%s\" " % str(c)
+            msg += "fitness=\"-1\" "
+            msg += "generation=\"%s\" " % str(self.generation)
+            msg += "info=\"\" />"
+            msg += "</chromosome_file>"
+            msg += "<data_files>"
+            msg += ",".join(data_files)
+            msg += ",site.xml"
+            msg += "</data_files>"
+            msg += "<orig_files>"
+            msg += ",".join(orig_files)
+            msg += "</orig_files>"
+            msg += "</job>"
+            self.xmpp.send(msg, self.boss)
+            self.running_jobs += 1
         if self.running_jobs == 0:
             self.xmpp.callLater(1, self.next_generation)
         return
@@ -174,13 +185,46 @@ class Manager:
                 return
         dom = xml.dom.minidom.parseString(msg)
         if dom.firstChild.nodeName == "job_completed":
-            children = dom.firstChild.childNodes
+            children = dom.getElementsByTagName("chromosome")
             for child in children:
-                fname = child.getAttribute("filename")
-                out = open(os.path.join(self.generation_dir, fname), 'w')
-                data = child.firstChild
-                out.write(data.toxml())
-                out.close()
+                data = child.getAttribute("data")
+                fitness = child.getAttribute("fitness")
+                info = child.getAttribute("info")
+                conn = sqlite3.connect(self.dna)
+                cr = conn.cursor()
+                query = "SELECT cid FROM chromosome WHERE genome='%s'" % str(data).strip()
+                cr.execute(query)
+                r = cr.fetchone()
+                cid = str(r[0]).strip()
+                query = "UPDATE chromosome SET accuracy=%s " % str(fitness).strip()
+                query += "WHERE cid='%s'" % str(cid)
+                cr.execute(query)
+                conn.commit()
+                
+                anns = str(info).split(',')
+                for line in anns:
+                    if line == "":
+                        continue
+                    stuff = str(line).split(':')
+                    # name:TP:FP:TN:FN
+                    query = "SELECT aid FROM annotations WHERE name='%s'" % str(stuff[0])
+                    cr.execute(query)
+                    r = cr.fetchone()
+                    if r == None:
+                        query = "INSERT INTO annotations (name) VALUES ('%s')" % str(stuff[0])
+                        cr.execute(query)
+                        query = "SELECT aid FROM annotations WHERE name='%s'" % str(stuff[0])
+                        cr.execute(query)
+                        r = cr.fetchone()
+                    aid = str(r[0]).strip()
+                    query = "INSERT INTO chrom_anns (cid, aid, tp, fp, tn, fn) VALUES "
+                    query += "(%s, %s, %s, %s, %s, %s)" % (cid, aid,
+                                                           stuff[1], stuff[2],
+                                                           stuff[3], stuff[4])
+                    cr.execute(query)
+                conn.commit()
+                cr.close()
+                conn.close()
             self.running_jobs -= 1
             print "running jobs:",self.running_jobs
             if self.running_jobs == 0:
@@ -188,17 +232,18 @@ class Manager:
         return
     
     def next_generation(self):
-        chroms = list()
         found = 0
-        cFiles = os.listdir(self.generation_dir)
-        for cFile in cFiles:
-            chroms.append(Chromosome(os.path.join(self.generation_dir, cFile),
-                                     self.max_width, self.max_height))
-        data_files = os.listdir(self.data_dir)
-        orig_files = os.listdir(self.orig_dir)
-        for c in chroms:
-            if c.fitness == -1:
-                found += 1
+        conn = sqlite3.connect(self.dna)
+        cr = conn.cursor()
+        query = "SELECT count(*) "
+        query += "FROM (chromosome c INNER JOIN chrom_gens cg ON c.cid=cg.cid) "
+        query += "INNER JOIN generations g ON cg.gid=g.gid "
+        query += "WHERE c.accuracy=-1 AND g.gen=%s" % str(self.generation)
+        cr.execute(query)
+        row = cr.fetchone()
+        found = int(float(str(row[0]).strip()))
+        cr.close()
+        conn.close()
         if found > 0:
             self.xmpp.callLater(1, self.do_work)
             return
@@ -211,15 +256,9 @@ class Manager:
             if int(float(self.max_generations)) <= self.generation:
                 self.xmpp.callLater(0, self.finish)
                 return
-        last_gen_dir = str(self.generation_dir)
-        self.generation_dir = os.path.join(self.dna, str(self.generation))
-        if os.path.isdir(self.generation_dir):
-            shutil.rmtree(self.generation_dir)
-        os.mkdir(self.generation_dir)
         cmd = "%s GA_Reproduce.py " % str(self.pypath)
         cmd += "--site=%s " % str(os.path.join(self.directory, "site.xml"))
-        cmd += "--chromosome=%s " % str(last_gen_dir)
-        cmd += "--directory=%s " % str(self.generation_dir)
+        cmd += "--chromosome=%s " % self.dna
         cmd += "--generation=%s " % str(self.generation)
         cmd += "--random=%f " % random.random()
         cmd += "--mutation_rate=%f " % self.mutation_rate
