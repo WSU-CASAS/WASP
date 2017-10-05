@@ -1,4 +1,28 @@
 #!/usr/bin/python
+#*****************************************************************************#
+#**
+#**  WASP Chromosome Viewer
+#**
+#**    Brian L Thomas, 2011
+#**
+#** Tools by the Center for Advanced Studies in Adaptive Systems at
+#**  the School of Electrical Engineering and Computer Science at
+#**  Washington State University
+#** 
+#** Copyright Washington State University, 2017
+#** Copyright Brian L. Thomas, 2017
+#** 
+#** All rights reserved
+#** Modification, distribution, and sale of this work is prohibited without
+#**  permission from Washington State University
+#**
+#** If this code is used for public research, any resulting publications need
+#** to cite work done by Brian L. Thomas at the Center for Advanced Study of 
+#** Adaptive Systems (CASAS) at Washington State University.
+#**  
+#** Contact: Brian L. Thomas (bthomas1@wsu.edu)
+#** Contact: Diane J. Cook (cook@eecs.wsu.edu)
+#*****************************************************************************#
 
 import matplotlib
 matplotlib.use('Agg')
