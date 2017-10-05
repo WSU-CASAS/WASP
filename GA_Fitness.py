@@ -75,6 +75,8 @@ class CookAr:
         self.files_orig = dict()
         self.file_ranges = dict()
         self.calc = dict()
+        self.all_annotations = list()
+        self.all_annotations.append("Other")
         for x in self.files_rawdata:
             self.file_ranges[x] = list()
             dom = xml.dom.minidom.parse(x)
@@ -89,6 +91,12 @@ class CookAr:
             self.file_ranges[x].append(get_datetime(info.getAttribute("timestamp")))
             info = data[0].lastChild
             self.file_ranges[x].append(get_datetime(info.getAttribute("timestamp")))
+            if data[0].hasAttribute("annotations"):
+                this_ann = data[0].getAttribute("annotations")
+                this_ann_list = str(this_ann).split(',')
+                for one_ann in this_ann_list:
+                    if one_ann not in self.all_annotations:
+                        self.all_annotations.append(str(one_ann).strip())
             oData = open(origFile)
             lines = oData.readlines()
             oData.close()
@@ -100,6 +108,7 @@ class CookAr:
             self.file_ranges[origFile].append(get_datetime("%s %s" % (stuff[0],
                                                                       stuff[1])))
         
+        self.all_annotations.sort()
         dom = xml.dom.minidom.parse(self.file_site)
         site = dom.getElementsByTagName("site")
         self.max_width = int(float(site[0].getAttribute("max_width")))
@@ -142,10 +151,10 @@ class CookAr:
     def write_config(self):
         out = open(self.file_config, 'w')
         out.write("numactivities\n")
-        out.write("  %s\n" % str(len(self.annotations)))
+        out.write("  %s\n" % str(len(self.all_annotations)))
         out.write("activitynames\n")
-        for x in range(len(self.annotations)):
-            out.write("  %s\n" % str(self.annotations[x]))
+        for x in range(len(self.all_annotations)):
+            out.write("  %s\n" % str(self.all_annotations[x]))
         out.write("numfeatures\n")
         out.write("  5\n")
         out.write("numphysicalsensors\n")
@@ -154,7 +163,7 @@ class CookAr:
         out.write("  %s\n" % str(self.chromosome.get_sensor_count()))
         out.write("  5\n")
         out.write("  7\n")
-        out.write("  %s\n" % str(len(self.annotations)))
+        out.write("  %s\n" % str(len(self.all_annotations)))
         out.write("  3\n")
         out.write("selectfeatures\n")
         out.write("  0\n")
@@ -220,7 +229,7 @@ class CookAr:
                 blocks.append(list())
         blocks[chunk].append(self.events[-1])
         
-        for x in self.annotations:
+        for x in self.all_annotations:
             self.calc[x] = {'TP':0, 'FP':0, 'TN':0, 'FN':0}
         
         totalTicks = 0
@@ -249,7 +258,7 @@ class CookAr:
                 else:
                     t += 1
         
-        for x in self.annotations:
+        for x in self.all_annotations:
             self.calc[x]['TN'] = totalTicks - self.calc[x]['TP'] - self.calc[x]['FP'] - self.calc[x]['FN']
         testing = 0
         for x in range(len(self.events)):
@@ -257,7 +266,7 @@ class CookAr:
                 testing += 1
         
         avgAcc = 0.0
-        for x in self.annotations:
+        for x in self.all_annotations:
             xPos = float(self.calc[x]['TP'] + self.calc[x]['FN'])
             xNeg = float(self.calc[x]['FP'] + self.calc[x]['TN'])
             tpr = 0.0
@@ -275,7 +284,7 @@ class CookAr:
             msg += "    acc=%f" % (acc)
             #msg += "\t p=%f  f=%f" % (xPos, xNeg)
             #print msg
-        self.fitness = avgAcc/(len(self.annotations)-1)
+        self.fitness = avgAcc/(len(self.all_annotations)-1)
         #self.fitness += 2.0 * float(len(self.annotations))
         return
 

@@ -4,6 +4,7 @@ import os
 import shutil
 import subprocess
 import sys
+import time
 
 
 if __name__ == "__main__":
@@ -13,6 +14,10 @@ if __name__ == "__main__":
                       "--startnum",
                       dest="startnum",
                       help="Start number for manager's ID.",
+                      default="0")
+    parser.add_option("--startscreen",
+                      dest="startscreen",
+                      help="Start on this screen session number.",
                       default="0")
     parser.add_option("-b",
                       "--boss",
@@ -35,8 +40,7 @@ if __name__ == "__main__":
                       default="50")
     parser.add_option("--random",
                       dest="random",
-                      help="Random numbers seed.",
-                      default="0.54321")
+                      help="Random numbers seed.")
     parser.add_option("--mutation_rate",
                       dest="mutation_rate",
                       help="List of mutation rates.",
@@ -56,15 +60,26 @@ if __name__ == "__main__":
     parser.add_option("--seed_size",
                       dest="seed_size",
                       help="List of number of sensors to seed with.",
-                      default="10")
+                      default="5")
     parser.add_option("--size_limit",
                       dest="size_limit",
                       help="List of limits on number of sensors (X=None).",
-                      default="X,30")
+                      default="X")
     parser.add_option("--max_generations",
                       dest="max_generations",
                       help="List of generations GA should evolve to (X=None).",
-                      default="500")
+                      default="300")
+    parser.add_option("--grid_size",
+                      dest="grid_size",
+                      help="Size of grid of sensors to test on layout.",
+                      default="X")
+    parser.add_option("--greedy_search",
+                      dest="greedy_search",
+                      help="Perform the greedy search on layout.",
+                      action="store_true",
+                      default=False)
+    parser.add_option("--multiply",
+                      dest="multiply")
     (options, args) = parser.parse_args()
     if None in [options.dir, options.sitedata]:
         if options.dir == None:
@@ -84,16 +99,34 @@ if __name__ == "__main__":
                             for ss in str(options.seed_size).split(','):
                                 for sl in str(options.size_limit).split(','):
                                     for mg in str(options.max_generations).split(','):
-                                        config.append(dict())
-                                        config[-1]["sitedata"] = sd
-                                        config[-1]["population"] = p
-                                        config[-1]["mutation_rate"] = mr
-                                        config[-1]["crossover"] = co
-                                        config[-1]["survival_rate"] = sr
-                                        config[-1]["reproduction_rate"] = rr
-                                        config[-1]["seed_size"] = ss
-                                        config[-1]["size_limit"] = sl
-                                        config[-1]["max_generations"] = mg
+                                        for gs in str(options.grid_size).split(','):
+                                            config.append(dict())
+                                            config[-1]["sitedata"] = sd
+                                            config[-1]["population"] = p
+                                            config[-1]["mutation_rate"] = mr
+                                            config[-1]["crossover"] = co
+                                            config[-1]["survival_rate"] = sr
+                                            config[-1]["reproduction_rate"] = rr
+                                            config[-1]["seed_size"] = ss
+                                            config[-1]["size_limit"] = sl
+                                            config[-1]["max_generations"] = mg
+                                            config[-1]["grid_size"] = gs
+    
+    if options.multiply != None:
+        config = list()
+        num = int(float(options.multiply))
+        for x in range(num):
+            config.append(dict())
+            config[-1]["sitedata"] = str(options.sitedata).split(',')[0]
+            config[-1]["population"] = str(options.population).split(',')[0]
+            config[-1]["mutation_rate"] = str(options.mutation_rate).split(',')[0]
+            config[-1]["crossover"] = str(options.crossover).split(',')[0]
+            config[-1]["survival_rate"] = str(options.survival_rate).split(',')[0]
+            config[-1]["reproduction_rate"] = str(options.reproduction_rate).split(',')[0]
+            config[-1]["seed_size"] = str(options.seed_size).split(',')[0]
+            config[-1]["size_limit"] = str(options.size_limit).split(',')[0]
+            config[-1]["max_generations"] = str(options.max_generations).split(',')[0]
+            config[-1]["grid_size"] = str(options.grid_size).split(',')[0]
     
     start = int(float(options.startnum))
     mydir = os.path.abspath(os.path.normpath(options.dir))
@@ -101,10 +134,18 @@ if __name__ == "__main__":
     if not os.path.isdir(mydir):
         os.makedirs(mydir)
     
-    out = open("wasp_screenrc", 'w')
+    numScreenRCs = 0
+    screenOffset = int(float(options.startscreen))
+    
+    out = open("wasp_screenrc%s" % str(numScreenRCs + screenOffset), 'w')
     out.write("source $HOME/.screenrc\n#\n")
     
     for x in range(len(config)):
+        if x%30 == 0 and x > 1:
+            out.close()
+            numScreenRCs += 1
+            out = open("wasp_screenrc%s" % str(numScreenRCs + screenOffset), 'w')
+            out.write("source $HOME/.screenrc\n#\n")
         num = str(x + start)
         if (x + start) < 10:
             num = "0%s" % str(x + start)
@@ -113,9 +154,9 @@ if __name__ == "__main__":
         if not os.path.isdir(wkDir):
             os.mkdir(wkDir)
         
-        dnaDir = os.path.join(wkDir, "dna")
-        if not os.path.isdir(dnaDir):
-            os.mkdir(dnaDir)
+        #dnaDir = os.path.join(wkDir, "dna")
+        #if not os.path.isdir(dnaDir):
+        #    os.mkdir(dnaDir)
         shutil.copy(os.path.abspath("dna.db"), wkDir)
         
         sd = str(config[x]["sitedata"]).split(':')
@@ -140,7 +181,8 @@ if __name__ == "__main__":
         cmd += "--boss=%s " % str(options.boss)
         cmd += "--pypath=%s " % str(options.pypath)
         cmd += "--population=%s " % str(config[x]["population"])
-        cmd += "--random=%s " % str(options.random)
+        if options.random != None:
+            cmd += "--random=%s " % str(options.random)
         cmd += "--mutation_rate=%s " % str(config[x]["mutation_rate"])
         cmd += "--crossover=%s " % str(config[x]["crossover"])
         cmd += "--survival_rate=%s " % str(config[x]["survival_rate"])
@@ -150,19 +192,26 @@ if __name__ == "__main__":
             cmd += "--size_limit=%s " % str(config[x]["size_limit"])
         if config[x]["max_generations"] != "X":
             cmd += "--max_generations=%s " % str(config[x]["max_generations"])
+            cmd += "--generation=%s " % str(int(float(config[x]["max_generations"])) - 1)
+        if config[x]["grid_size"] != "X":
+            cmd += "--grid_size=%s " % str(config[x]["grid_size"])
+        if options.greedy_search:
+            cmd += "--greedy_search "
         cmd = str(cmd).strip()
         fname = os.path.join(wkDir, "run.sh")
         run = open(fname, 'w')
         run.write("#!/bin/sh\n\n")
-        run.write("sleep %s\n" % (x*10))
+        run.write("sleep %s\n" % (x*5))
         run.write("%s\n" % cmd)
-        run.write("bash\n")
+        #run.write("bash\n")
         run.close()
         subprocess.call(str("chmod +x %s" % fname).split())
         out.write("screen -t Manager%s  %s\n" % (str(num), fname))
         print cmd
     
     out.close()
-    cmd = "screen -d -m -S WASP -c wasp_screenrc"
-    subprocess.call(str(cmd).split())
+    for x in range(numScreenRCs + 1):
+        cmd = "screen -d -m -S WASP%s -c wasp_screenrc%s" % (str(x + screenOffset),str(x + screenOffset))
+        print cmd
+        subprocess.call(str(cmd).split())
 

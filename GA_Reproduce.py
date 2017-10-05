@@ -6,7 +6,7 @@ import os
 import random
 import re
 import shutil
-import sqlite3
+import pgdb
 import sys
 import uuid
 import xml.dom.minidom
@@ -61,10 +61,12 @@ class Chromosome:
     def update_fitness(self):
         self.fitness = float(self.accuracy)
         for x in self.ann.keys():
-            if self.ann[x]['acc'] != 0 and self.ann[x]['avg'] != 0 and x != "Other":
-                mul = self.ann[x]['acc'] / self.ann[x]['avg']
-                self.fitness = self.fitness * mul
-        self.fitness = self.fitness - (float(str("".join(self.data)).count("1"))/10.0)
+            if self.ann[x]['acc'] > 0 and self.ann[x]['avg'] >= 0 and x != "Other":
+                if self.ann[x]['acc'] > self.ann[x]['avg']:
+                    self.fitness += self.ann[x]['acc'] - self.ann[x]['avg']
+                #mul = self.ann[x]['acc'] / self.ann[x]['avg']
+                #self.fitness = self.fitness * mul
+        self.fitness = self.fitness - (float(str("".join(self.data)).count("1"))/20.0)
         return
     
     def set_check(self, chFunc):
@@ -170,7 +172,7 @@ class Chromosome:
 class Pollinator:
     def __init__(self, options):
         self.file_site = options.site
-        self.chromDB = options.chromosome
+        self.manager_id = options.manager_id
         self.nextgen = int(float(options.generation))
         self.seed = options.seed
         self.population = options.population
@@ -184,11 +186,19 @@ class Pollinator:
             self.config["size_limit"] = int(float(options.size_limit))
         else:
             self.config["size_limit"] = None
+        if options.grid_size != None:
+            self.config["grid_size"] = int(float(options.grid_size))
+        else:
+            self.config["grid_size"] = None
+        self.greedy_search = options.greedy_search
         self.space = None
         self.max_width = 0
         self.max_height = 0
         self.chromosomes = list()
         self.children = list()
+        self.annotations = list()
+        self.mydb = pgdb.connect("", "", "", "", "wasp")
+        self.cr = self.mydb.cursor()
         return
     
     def load_site(self):
@@ -250,8 +260,10 @@ class Pollinator:
         return
     
     def valid_sensor_location(self, x, y):
-        if self.space[x][y] not in ['x','w','l']:
-            return True
+        if x < len(self.space):
+            if y < len(self.space[x]):
+                if self.space[x][y] not in ['x','w','l']:
+                    return True
         return False
     
     def build_seed(self, count):
@@ -267,35 +279,71 @@ class Pollinator:
                 num = random.randint(0, len(spots) - 1)
         return chrom
     
+    def build_grid(self, xOff, yOff):
+        chrom = Chromosome("", self.max_width, self.max_height)
+        chrom.set_check(self.valid_sensor_location)
+        for x in range(self.max_width):
+            if (x % self.config["grid_size"]) == 0:
+                for y in range(self.max_height):
+                    if (y % self.config["grid_size"]) == 0:
+                        chrom.set_xy(x + xOff, y + yOff)
+        #self.print_layout(chrom)
+        return chrom
+    
+    def print_layout(self, chrom):
+        for y in range(self.max_height):
+            out = ""
+            for x in range(self.max_width):
+                num = chrom.get_num(x,y)
+                if chrom.data[num] == "1":
+                    out += "%2s" % chrom.data[num]
+                else:
+                    out += "%2s" % self.space[x][y]
+            print out
+        print "\n"
+        return
+    
     def load_chromosomes(self):
         ann = dict()
-        conn = sqlite3.connect(self.chromDB)
-        cr = conn.cursor()
-        query = "SELECT c.genome, c.accuracy, c.cid "
-        query += "FROM (chromosome c INNER JOIN chrom_gens cg ON c.cid=cg.cid) "
-        query += "INNER JOIN generations g ON cg.gid=g.gid "
-        query += "WHERE g.gen=%s" % str(self.nextgen - 1)
-        cr.execute(query)
-        row = cr.fetchone()
+        annIds = self.get_annotation_ids()
+        query = "SELECT c.genome, "
+        if self.greedy_search:
+            query += "cg.final_fitness, "
+        else:
+            query += "c.accuracy, "
+        query += "c.cid "
+        query += "FROM (chromosome c INNER JOIN chrom_gen cg ON c.cid=cg.cid) "
+        query += "INNER JOIN generation g ON cg.gid=g.gid "
+        if self.greedy_search:
+            query += "WHERE cg.final_fitness IS NOT NULL AND "
+        else:
+            query += "WHERE c.accuracy<>-1 AND "
+        query += "g.gid=%s AND " % str(self.nextgen - 1)
+        query += "cg.mid=%s" % self.manager_id
+        self.cr.execute(query)
+        row = self.cr.fetchone()
         while row != None:
             self.chromosomes.append(Chromosome("", self.max_width,
                                                self.max_height, self.config))
-            self.chromosomes[-1].data = list(str(row[0]).strip())
+            if not self.greedy_search:
+                self.chromosomes[-1].data = list(str(row[0]).strip())
             self.chromosomes[-1].accuracy = float(row[1])
             self.chromosomes[-1].cid = str(row[2]).strip()
             self.chromosomes[-1].generation = self.nextgen - 1
-            row = cr.fetchone()
-        
+            row = self.cr.fetchone()
+        print "chromosomes:",len(self.chromosomes)
         for x in range(len(self.chromosomes)):
             self.chromosomes[x].set_check(self.valid_sensor_location)
             query = "SELECT a.name, ca.tp, ca.fp, ca.tn, ca.fn "
-            query += "FROM (chromosome c INNER JOIN chrom_anns ca ON c.cid=ca.cid) "
-            query += "INNER JOIN annotations a ON ca.aid=a.aid "
-            query += "WHERE c.cid='%s'" % self.chromosomes[x].cid
-            cr.execute(query)
-            row = cr.fetchone()
+            query += "FROM (chromosome c INNER JOIN chrom_ann ca ON c.cid=ca.cid) "
+            query += "INNER JOIN annotation a ON ca.aid=a.aid "
+            query += "WHERE c.cid='%s' AND ca.mid='%s'" % (self.chromosomes[x].cid, self.manager_id)
+            self.cr.execute(query)
+            row = self.cr.fetchone()
             while row != None:
                 name = str(row[0]).strip()
+                if name not in self.annotations:
+                    self.annotations.append(name)
                 if name not in ann:
                     ann[name] = 0.0
                 self.chromosomes[x].ann[name] = dict()
@@ -303,89 +351,202 @@ class Pollinator:
                 self.chromosomes[x].ann[name]['FP'] = float(row[2])
                 self.chromosomes[x].ann[name]['TN'] = float(row[3])
                 self.chromosomes[x].ann[name]['FN'] = float(row[4])
-                row = cr.fetchone()
+                row = self.cr.fetchone()
             self.chromosomes[x].calculate_accuracies()
-            for y in ann.keys():
+            for y in self.chromosomes[x].ann.keys():
                 ann[y] += self.chromosomes[x].ann[name]['acc']
         
-        query = "SELECT gid FROM generations WHERE gen=%s" % str(self.nextgen - 1)
-        cr.execute(query)
-        r = cr.fetchone()
-        gid = str(r[0]).strip()
+        gid = str(self.nextgen - 1)
         avg = dict()
         for y in ann.keys():
             avg[y] = ann[y] / float(len(self.chromosomes))
-        for x in range(len(self.chromosomes)):
-            for y in avg.keys():
-                self.chromosomes[x].ann[y]['avg'] = avg[y]
-            self.chromosomes[x].update_fitness()
-            query = "UPDATE chrom_gens SET final_fitness=%f " % self.chromosomes[x].fitness
-            query += "WHERE cid=%s AND gid=%s" % (self.chromosomes[x].cid, gid)
-            cr.execute(query)
-        conn.commit()
-        cr.close()
-        conn.close()
+        if not self.greedy_search:
+            for x in range(len(self.chromosomes)):
+                for y in avg.keys():
+                    if y in self.chromosomes[x].ann:
+                        self.chromosomes[x].ann[y]['avg'] = avg[y]
+                self.chromosomes[x].update_fitness()
+                query = "UPDATE chrom_gen SET final_fitness=%f " % self.chromosomes[x].fitness
+                query += "WHERE cid=%s AND gid=%s AND mid=%s" % (self.chromosomes[x].cid,
+                                                                 gid, self.manager_id)
+                self.cr.execute(query)
+        self.mydb.commit()
         return
     
-    def breed_children(self):
-        self.chromosomes.sort(reverse=True)
-        survivers = int(len(self.chromosomes) * self.config["survival"])
-        for x in range(survivers):
-            self.children.append(self.chromosomes[x])
-        breeders = int(len(self.chromosomes) * self.config["reproduction"])
-        mates = int((len(self.chromosomes) - len(self.children)) / breeders)
-        spares = len(self.chromosomes) - (mates * breeders)
+    def get_annotation_ids(self):
+        anid = dict()
+        query = "SELECT aid, name FROM annotation"
+        self.cr.execute(query)
+        row = self.cr.fetchone()
+        while row != None:
+            anid[str(row[1]).strip()] = str(row[0]).strip()
+            row = self.cr.fetchone()
+        return anid
+    
+    def get_top_annotation_performers(self):
+        top = dict()
+        top_val = dict()
+        for x in self.annotations:
+            top[x] = list()
+            top_val[x] = 0
         
-        conn = sqlite3.connect(self.chromDB)
-        cr = conn.cursor()
-        query = "INSERT INTO generations (gen) VALUES (%s)" % str(self.nextgen)
-        cr.execute(query)
-        conn.commit()
-        query = "SELECT gid FROM generations WHERE gen=%s" % str(self.nextgen)
-        cr.execute(query)
-        r = cr.fetchone()
+        for x in range(len(self.chromosomes)):
+            for aName in self.annotations:
+                val = -1
+                if aName in self.chromosomes[x].ann:
+                    val = self.chromosomes[x].ann[aName]['acc']
+                    if val > top_val[aName]:
+                        top[aName] = list()
+                        top[aName].append(x)
+                        top_val[aName] = val
+                    elif val == top_val[aName] and val > 0:
+                        top[aName].append(x)
+        return top
+    
+    def breed_children(self):
+        r = None
+        while r == None:
+            query = "SELECT gid FROM generation WHERE gid=%s" % str(self.nextgen)
+            self.cr.execute(query)
+            r = self.cr.fetchone()
+            if r == None:
+                query = "INSERT INTO generation (gid) VALUES (nextval('generation_gid_seq'::regclass));"
+                self.cr.execute(query)
+                self.mydb.commit()
         gid = str(r[0]).strip()
         
-        for x in range(breeders):
-            turns = mates
-            if x < spares:
-                turns += 1
-            for y in range(turns):
-                is_valid = False
-                while not is_valid:
-                    nchild = self.chromosomes[x] + self.chromosomes[x+y]
-                    query = "SELECT count(*) FROM chromosome WHERE "
-                    query += "genome='%s'" % str("".join(nchild.data))
-                    cr.execute(query)
-                    r = cr.fetchone()
-                    if str(r[0]) == "0":
-                        is_valid = True
-                        uid = str(uuid.uuid4().hex)
-                        query = "INSERT INTO chromosome (genome, uuid) VALUES "
-                        query += "('%s', '%s')" % ("".join(nchild.data), uid)
-                        cr.execute(query)
-                        conn.commit()
-                        query = "SELECT cid FROM chromosome "
-                        query += "WHERE uuid='%s'" % uid
-                        cr.execute(query)
-                        r = cr.fetchone()
-                        nchild.cid = str(r[0]).strip()
-                        self.children.append(nchild)
-        
-        if self.population != None:
-            while len(self.children) > float(self.population):
-                self.children.pop()
+        if self.greedy_search:
+            bestAnn = self.get_top_annotation_performers()
+            myCount = 0
+            for ann in self.annotations:
+                mylog = open("repo.log",'a')
+                mylog.write("%3s\t%6s  %3s\t" % (str(self.nextgen-1),ann,str(len(bestAnn[ann]))))
+                for z in bestAnn[ann][:1]:
+                    mylog.write("%s " % str(self.chromosomes[z].ann[ann]['acc']))
+                mylog.write("\n")
+                mylog.close()
+                for z in bestAnn[ann][:1]:
+                    query = "SELECT genome FROM chromosome WHERE cid='%s'" % self.chromosomes[z].cid
+                    self.cr.execute(query)
+                    row = self.cr.fetchone()
+                    if row != None:
+                        self.chromosomes[z].data = list(str(row[0]).strip())
+                        myCount += 1
+            print "  Children multiplier:",myCount
+            myCount = 0
+            myTotal = 0
+            for x in range(self.max_width):
+                myTotal += myCount
+                print "x=%3s\tchildren=%6s \ttotal=%s" % (str(x),str(myCount),str(myTotal))
+                myCount = 0
+                for y in range(self.max_height):
+                    if not self.valid_sensor_location(x, y):
+                        continue
+                    for ann in self.annotations:
+                        for z in bestAnn[ann][:1]:
+                            num = self.chromosomes[z].get_num(x, y)
+                            if self.chromosomes[z].data[num] == "0":
+                                myCount += 1
+                                chrom = Chromosome("", self.max_width, self.max_height)
+                                chrom.set_check(self.valid_sensor_location)
+                                chrom.data = copy.deepcopy(self.chromosomes[z].data)
+                                chrom.set_xy(x, y)
+                                query = "SELECT cid FROM chromosome WHERE "
+                                query += "genome='%s'" % str("".join(chrom.data))
+                                self.cr.execute(query)
+                                r = self.cr.fetchone()
+                                if r == None:
+                                    try:
+                                        query = "INSERT INTO chromosome (genome) VALUES "
+                                        query += "('%s')" % ("".join(chrom.data))
+                                        self.cr.execute(query)
+                                    except pgdb.DatabaseError:
+                                        r = None
+                                        self.cr = self.mydb.cursor()
+                                    query = "SELECT cid FROM chromosome "
+                                    query += "WHERE genome='%s'" % "".join(chrom.data)
+                                    self.cr.execute(query)
+                                    r = self.cr.fetchone()
+                                chrom.cid = str(r[0]).strip()
+                                query = "SELECT cid FROM chrom_gen WHERE "
+                                query += "cid=%s AND gid=%s AND mid=%s" % (chrom.cid, gid, self.manager_id)
+                                self.cr.execute(query)
+                                if self.cr.rowcount < 1:
+                                    query = "INSERT INTO chrom_gen (cid, gid, mid) VALUES "
+                                    query += "(%s, %s, %s)" % (str(chrom.cid), gid, self.manager_id)
+                                    self.cr.execute(query)
+                self.mydb.commit()
         else:
-            while len(self.children) > len(self.chromosomes):
-                self.children.pop()
-        
-        for x in range(len(self.children)):
-            query = "INSERT INTO chrom_gens (cid, gid) VALUES "
-            query += "(%s, %s)" % (str(self.children[x].cid), gid)
-            cr.execute(query)
-        conn.commit()
-        cr.close()
-        conn.close()
+            self.chromosomes.sort(reverse=True)
+            survivers = int(len(self.chromosomes) * self.config["survival"])
+            for x in range(survivers):
+                self.children.append(self.chromosomes[x])
+            breeders = int(len(self.chromosomes) * self.config["reproduction"])
+            mates = int((len(self.chromosomes) - len(self.children)) / breeders)
+            spares = len(self.chromosomes) - (mates * breeders)
+            for x in range(breeders):
+                turns = mates
+                if x > breeders/2:
+                    turns = int(mates + (x - breeders/2))
+                elif x < breeders/2:
+                    turns = int(mates - (breeders/2 - x))
+                if x < spares:
+                    turns += 1
+                for y in range(turns):
+                    is_valid = False
+                    while not is_valid:
+                        nchild = self.chromosomes[x] + self.chromosomes[random.randint(0,breeders)]
+                        query = "SELECT count(*) FROM chromosome WHERE "
+                        query += "genome='%s'" % str("".join(nchild.data))
+                        self.cr.execute(query)
+                        r = self.cr.fetchone()
+                        if str(r[0]) == "0":
+                            is_valid = True
+                            query = "INSERT INTO chromosome (genome) VALUES "
+                            query += "('%s')" % ("".join(nchild.data))
+                            self.cr.execute(query)
+                            query = "SELECT cid FROM chromosome "
+                            query += "WHERE genome='%s'" % "".join(nchild.data)
+                            self.cr.execute(query)
+                            r = self.cr.fetchone()
+                            nchild.cid = str(r[0]).strip()
+                            self.children.append(nchild)
+            self.mydb.commit()
+            
+            if self.population != None:
+                while len(self.children) > float(self.population):
+                    self.children.pop()
+            else:
+                while len(self.children) > len(self.chromosomes):
+                    self.children.pop()
+            
+            for x in range(len(self.children)):
+                query = "INSERT INTO chrom_gen (cid, gid, mid) VALUES "
+                query += "(%s, %s, %s)" % (str(self.children[x].cid), gid, self.manager_id)
+                self.cr.execute(query)
+        self.mydb.commit()
+        return
+    
+    def insert_chromosome(self, chromo, gid):
+        query = "SELECT cid FROM chromosome WHERE genome='%s'" % "".join(chromo.data)
+        self.cr.execute(query)
+        if self.cr.rowcount < 1:
+            query = "INSERT INTO chromosome (genome) VALUES "
+            query += "('%s')" % ("".join(chromo.data))
+            self.cr.execute(query)
+            self.mydb.commit()
+            query = "SELECT cid FROM chromosome WHERE genome='%s'" % "".join(chromo.data)
+            self.cr.execute(query)
+        row = self.cr.fetchone()
+        cid = str(row[0]).strip()
+        query = "SELECT cid FROM chrom_gen WHERE "
+        query += "cid=%s AND gid=%s AND mid=%s" % (cid, str(gid), self.manager_id)
+        self.cr.execute(query)
+        if self.cr.rowcount < 1:
+            query = "INSERT INTO chrom_gen (cid, gid, mid) VALUES "
+            query += "(%s, %s, %s)" % (str(cid), str(gid), self.manager_id)
+            self.cr.execute(query)
+            self.mydb.commit()
         return
     
     def run(self):
@@ -394,30 +555,37 @@ class Pollinator:
             self.load_chromosomes()
             self.breed_children()
         else:
-            conn = sqlite3.connect(self.chromDB)
-            cr = conn.cursor()
-            query = "INSERT INTO generations (gen) VALUES (0)"
-            cr.execute(query)
-            query = "SELECT gid FROM generations WHERE gen=0"
-            cr.execute(query)
-            r = cr.fetchone()
-            gid = r[0]
-            for x in range(int(float(self.seed))):
-                chromo = self.build_seed(self.config["seed_size"])
-                cuuid = str(uuid.uuid4().hex)
-                query = "INSERT INTO chromosome (genome, uuid) VALUES "
-                query += "('%s', '%s')" % ("".join(chromo.data), cuuid)
-                cr.execute(query)
-                query = "SELECT cid FROM chromosome WHERE uuid='%s'" % cuuid
-                cr.execute(query)
-                row = cr.fetchone()
-                cid = row[0]
-                query = "INSERT INTO chrom_gens (cid, gid) VALUES "
-                query += "(%s, %s)" % (str(cid), str(gid))
-                cr.execute(query)
-            conn.commit()
-            cr.close()
-            conn.close()
+            query = "SELECT gid FROM generation WHERE gid=1"
+            self.cr.execute(query)
+            r = self.cr.fetchone()
+            if r == None:
+                query = "INSERT INTO generation (gid) VALUES (nextval('generation_gid_seq'::regclass))"
+                self.cr.execute(query)
+                self.mydb.commit()
+                query = "SELECT gid FROM generation WHERE gid=1"
+                self.cr.execute(query)
+                r = self.cr.fetchone()
+            gid = str(r[0]).strip()
+            
+            if self.greedy_search:
+                for x in range(self.max_width):
+                    for y in range(self.max_height):
+                        if self.valid_sensor_location(x, y):
+                            chromo = Chromosome("", self.max_width, self.max_height)
+                            chromo.set_check(self.valid_sensor_location)
+                            chromo.set_xy(x, y)
+                            self.insert_chromosome(chromo, gid)
+            elif self.config["grid_size"] != None:
+                for xOff in range(self.config["grid_size"]):
+                    for yOff in range(self.config["grid_size"]):
+                        chromo = self.build_grid(xOff, yOff)
+                        self.insert_chromosome(chromo, gid)
+                self.mydb.commit()
+            else:
+                for x in range(int(float(self.seed))):
+                    chromo = self.build_seed(self.config["seed_size"])
+                    self.insert_chromosome(chromo, gid)
+                self.mydb.commit()
         return
 
 
@@ -429,10 +597,6 @@ if __name__ == "__main__":
                       "--site",
                       dest="site",
                       help="Site configuration file.")
-    parser.add_option("-c",
-                      "--chromosome",
-                      dest="chromosome",
-                      help="SQLite3 database with the sensor chromosome definitions.")
     parser.add_option("-g",
                       "--generation",
                       dest="generation",
@@ -444,6 +608,10 @@ if __name__ == "__main__":
                       "--random",
                       dest="random",
                       help="Random numbers seed.")
+    parser.add_option("-m",
+                      "--manager_id",
+                      dest="manager_id",
+                      help="Manager id from the DB.")
     parser.add_option("--mutation_rate",
                       dest="mutation_rate",
                       help="Rate of mutation in new chromosomes.",
@@ -470,12 +638,18 @@ if __name__ == "__main__":
     parser.add_option("--population",
                       dest="population",
                       help="Size limit of the population.")
+    parser.add_option("--grid_size",
+                      dest="grid_size",
+                      help="Size of grid of sensors to test on layout.")
+    parser.add_option("--greedy_search",
+                      dest="greedy_search",
+                      help="Perform greedy search over layout.",
+                      action="store_true",
+                      default=False)
     (options, args) = parser.parse_args()
-    if None in [options.site, options.chromosome, options.generation]:
+    if None in [options.site, options.generation]:
         if options.site == None:
             print "ERROR: Missing -s / --site"
-        if options.chromosome == None:
-            print "ERROR: Missing -c / --chromosome"
         if options.generation == None:
             print "ERROR: Missing -g / --generation"
         parser.print_help()

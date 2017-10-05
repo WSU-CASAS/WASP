@@ -460,9 +460,16 @@ class Emulator:
         return
     
     def output_results(self):
+        dist_ann = list()
+        for i in range(len(self.movement)):
+            if self.movement[i].annotation != "":
+                myann = str(self.movement[i].annotation).split("-")[0]
+                if myann not in dist_ann:
+                    dist_ann.append(myann)
         outFile = open(self.file_output, 'w')
         outFile.write("<data ")
-        outFile.write("filename=\"%s\" >" % self.file_movement)
+        outFile.write("filename=\"%s\" " % self.file_movement)
+        outFile.write("annotations=\"%s\" >" % ",".join(dist_ann))
         for r in self.events:
             outFile.write("%s" % str(r))
         outFile.write("</data>")
@@ -484,7 +491,7 @@ class Emulator:
         self.load_chromosome()
         self.emulate()
         self.output_results()
-        self.output_translation()
+        #self.output_translation()
         return
 
 

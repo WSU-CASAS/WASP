@@ -14,9 +14,10 @@ import xml.dom.minidom
 
 
 class Job:
-    def __init__(self, manager, message):
+    def __init__(self, manager, message, id):
         self.manager = manager
         self.message = str(message)
+        self.id = str(id)
         return
     
     def completed(self):
@@ -25,6 +26,56 @@ class Job:
     
     def __str__(self):
         return self.message
+
+class Worker:
+    def __init__(self, threads="1"):
+        self.threads = int(float(threads))
+        self.jobs = dict()
+        self.ready = True
+        return
+    
+    def finish_job(self, id):
+        manager = ""
+        if id in self.jobs:
+            manager = str(self.jobs[id].manager)
+            del self.jobs[id]
+        if len(self.jobs) < self.threads:
+            self.ready = True
+        else:
+            self.ready = False
+        return manager
+    
+    def remove_manager(self, manager):
+        to_remove = list()
+        for j in self.jobs.keys():
+            if manager == self.jobs[j].manager:
+                to_remove.append(j)
+        for j in to_remove:
+            del self.jobs[j]
+        if len(self.jobs) < self.threads:
+            self.ready = True
+        else:
+            self.ready = False
+        return
+    
+    def add_job(self, job):
+        success = False
+        if job.id not in self.jobs:
+            self.jobs[job.id] = job
+            success = True
+        if len(self.jobs) < self.threads:
+            self.ready = True
+        else:
+            self.ready = False
+        return success
+    
+    def reset(self):
+        old_jobs = list()
+        for x in self.jobs.keys():
+            old_jobs.append(copy.deepcopy(self.jobs[x]))
+        self.jobs = dict()
+        self.ready = True
+        return old_jobs
 
 
 
@@ -39,9 +90,10 @@ class Boss:
         self.xmpp.set_buddy_quit_callback(self.buddy_quit)
         self.xmpp.set_direct_msg_callback(self.message)
         self.xmpp.set_finish_callback(self.finish)
-        self.workers = list()
+        self.workers = dict()
         self.readyWorkers = collections.deque()
         self.workerJobs = dict()
+        self.workerThreads = 0
         self.managers = list()
         self.jobs = collections.deque()
         self.job_count = 0
@@ -72,14 +124,15 @@ class Boss:
     def buddy_quit(self, name):
         print "buddy_quit( %s )" % str(name)
         print "workers:      ", len(self.workers)
+        print "workerThreads:", str(self.workerThreads)
         print "readyWorkers: ", len(self.readyWorkers)
-        print "workerJobs:   ", len(self.workerJobs)
         print "len(jobs):    ", len(self.jobs)
         if name in self.workers:
-            self.workers.remove(name)
-        if name in self.workerJobs:
-            self.jobs.appendleft(copy.copy(self.workerJobs[name]))
-            del self.workerJobs[name]
+            self.workerThreads -= self.workers[name].threads
+            jobs = self.workers[name].reset()
+            for j in jobs:
+                self.jobs.appendleft(copy.copy(j))
+            del self.workers[name]
         if name in self.readyWorkers:
             self.readyWorkers.remove(name)
         if name in self.managers:
@@ -91,6 +144,10 @@ class Boss:
             rmJobs.reverse()
             for x in rmJobs:
                 self.jobs.remove(self.jobs[x])
+            for x in self.workers.keys():
+                self.workers[x].remove_manager(name)
+                if self.workers[x].ready and x not in self.readyWorkers:
+                    self.readyWorkers.append(x)
         return
     
     def check_workers(self):
@@ -105,8 +162,10 @@ class Boss:
         if len(self.readyWorkers) > 0 and len(self.jobs) > 0:
             w = self.readyWorkers.popleft()
             j = self.jobs.popleft()
-            self.workerJobs[w] = j
-            self.xmpp.send(str(j), w)
+            if self.workers[w].add_job(j):
+                self.xmpp.send(str(j), w)
+                if self.workers[w].ready:
+                    self.readyWorkers.append(w)
             self.xmpp.callLater(0, self.send_work)
         else:
             self.xmpp.callLater(1, self.send_work)
@@ -143,36 +202,65 @@ class Boss:
     def message(self, msg, name):
         if name == "bthomas@node01":
             if msg == "quit-now":
-                for x in range(len(self.workers)):
-                    self.xmpp.send("quit", self.workers[x])
+                for x in self.workers.keys():
+                    self.xmpp.send("quit", x)
                 for x in range(len(self.managers)):
                     self.xmpp.send("quit-now", self.managers[x])
                 return
-            if msg == "quit-generation":
+            elif msg == "quit-workers":
+                for x in self.workers.keys():
+                    self.xmpp.send("quit", x)
+                return
+            elif msg == "quit-managers":
+                for x in range(len(self.managers)):
+                    self.xmpp.send("quit-now", self.managers[x])
+                return
+            elif msg == "quit-generation":
                 for x in range(len(self.managers)):
                     self.xmpp.send("quit-generation", self.managers[x])
+                return
+            elif msg == "conditional-refresh":
+                for x in range(len(self.managers)):
+                    self.xmpp.send("conditional-refresh", self.managers[x])
+                return
+            elif re.search('manager-refresh-', msg):
+                stuff = str(msg).split('-')
+                if len(stuff) >= 3:
+                    self.xmpp.send("refresh", str(stuff[2]).strip())
+                return
+            elif re.search('manager-refresh', msg):
+                for x in range(len(self.managers)):
+                    self.xmpp.send("refresh", self.managers[x])
+                return
         dom = xml.dom.minidom.parseString(msg)
         type = dom.firstChild.nodeName
         print "Msg from:", name, "    type =", type
         if type == "job":
-            self.jobs.append(Job(name, msg))
+            id = dom.firstChild.getAttribute("id")
+            self.jobs.append(Job(name, msg, id))
         elif type == "job_completed":
             self.job_count += 1
-            if name in self.workerJobs:
-                j = self.workerJobs[name]
-                j.completed()
-                self.xmpp.send(str(msg), j.manager)
-                j = None
-                del self.workerJobs[name]
-                self.readyWorkers.append(name)
+            id = dom.firstChild.getAttribute("id")
+            if name in self.workers:
+                manager = self.workers[name].finish_job(id)
+                if manager != "":
+                    self.xmpp.send(str(msg), manager)
+                if self.workers[name].ready and name not in self.readyWorkers:
+                    self.readyWorkers.append(name)
         elif type == "worker_ready":
+            try:
+                threads = dom.firstChild.getAttribute("threads")
+            except:
+                threads = "1"
             if name not in self.workers:
-                self.workers.append(name)
-            if name not in self.readyWorkers:
+                self.workers[name] = Worker(threads)
+                self.workerThreads += int(float(threads))
+            if self.workers[name].ready and name not in self.readyWorkers:
                 self.readyWorkers.append(name)
-            if name in self.workerJobs:
-                self.jobs.appendleft(copy.copy(self.workerJobs[name]))
-                del self.workerJobs[name]
+            if len(self.workers[name].jobs) > 0:
+                old_jobs = self.workers[name].reset()
+                for j in old_jobs:
+                    self.jobs.appendleft(copy.copy(j))
         elif type == "send_file":
             if name not in self.managers:
                 self.managers.append(name)
@@ -182,6 +270,7 @@ class Boss:
         elif type == "info":
             message = "managers: %s\n" % str(len(self.managers))
             message += "workers: %s\n" % str(len(self.workers))
+            message += "workerThreads: %s\n" % str(self.workerThreads)
             message += "ready workers: %s\n" % str(len(self.readyWorkers))
             message += "jobs: %s" % str(len(self.jobs))
             self.xmpp.send(message, name)
@@ -190,11 +279,22 @@ class Boss:
             message += "\n    ".join(self.managers)
             message += "\n" + "*"*20 
             message += "workers"
-            message += "\n    ".join(self.workers)
+            message += "\n    ".join(self.workers.keys())
             message += "\n" + "*"*20
             message += "ready workers"
             message += "\n    ".join(self.readyWorkers)
             message += "\n"
+            self.xmpp.send(message, name)
+        elif type == "get_job_counts":
+            message = "managers"
+            m = dict()
+            for x in range(len(self.managers)):
+                m[self.managers[x]] = 0
+            for n in self.workers.keys():
+                for j in self.workers[n].jobs.keys():
+                    m[self.workers[n].jobs[j].manager] += 1
+            for n in m.keys():
+                message += "\n%s: %s" % (n, str(m[n]))
             self.xmpp.send(message, name)
         return
 
